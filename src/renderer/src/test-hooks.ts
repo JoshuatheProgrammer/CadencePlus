@@ -3,6 +3,7 @@
  */
 import * as D from './state/doc-actions'
 import * as A from './state/image-actions'
+import * as R from './state/recovery'
 import { COMMANDS, run } from './state/commands'
 import { get, set } from './state/store'
 import { storeStats } from './engine/tiles'
@@ -17,6 +18,7 @@ export function installTestHooks(): void {
     run,
     D,
     A,
+    R,
     COMMANDS,
     storeStats,
     /** Average ms per viewport-sized composite of the active document (GPU flushed). */

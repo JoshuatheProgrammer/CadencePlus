@@ -1,7 +1,8 @@
 import { existsSync, promises as fsp } from 'node:fs'
 import { join } from 'node:path'
 import { app, BrowserWindow, clipboard, ClipboardItem, dialog, ipcMain, Menu, shell } from 'electron'
-import { IMAGE_EXTENSIONS } from '@shared/ipc'
+import { IMAGE_EXTENSIONS, type RecoveryMeta } from '@shared/ipc'
+import { discardRecovery, listRecovery, writeRecovery } from './recovery'
 import { addRecent, getSettings, setSetting } from './settings'
 
 if (process.env.CADENCE_PLUS_USER_DATA) app.setPath('userData', process.env.CADENCE_PLUS_USER_DATA)
@@ -113,6 +114,9 @@ function registerIpc(): void {
     }
     return null
   })
+  ipcMain.handle('recovery:write', (_e, id: string, meta: RecoveryMeta, data: Uint8Array) => writeRecovery(id, meta, data))
+  ipcMain.handle('recovery:discard', (_e, id: string) => discardRecovery(id))
+  ipcMain.handle('recovery:list', () => listRecovery())
   ipcMain.handle('settings:get', () => getSettings())
   ipcMain.handle('settings:set', (_e, key: string, value: unknown) => setSetting(key, value))
   ipcMain.handle('settings:addRecent', (_e, path: string) => addRecent(path))

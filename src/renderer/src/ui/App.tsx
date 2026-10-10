@@ -17,6 +17,7 @@ import { HistoryPanel } from './panels/HistoryPanel'
 import { LayersPanel } from './panels/LayersPanel'
 import { NavigatorPanel } from './panels/NavigatorPanel'
 import { PropertiesPanel } from './panels/PropertiesPanel'
+import { offerRecovery, startAutosave } from '../state/recovery'
 import { installTestHooks } from '../test-hooks'
 import { TooltipHost } from './Tooltip'
 import { defaultLayout, isPanelOpen, PANEL_TITLES, resetWorkspace, setDockApi, togglePanel } from './workspace'
@@ -526,6 +527,8 @@ export function App() {
         ...(Array.isArray(s.swatches) ? { swatches: s.swatches as string[] } : {})
       })
     })
+    const stopAutosave = startAutosave()
+    void offerRecovery()
     const onKey = (e: KeyboardEvent) => void handleKeydown(e)
     window.addEventListener('keydown', onKey)
     const offClose = window.cadencePlus.onCloseRequested(async () => {
@@ -554,6 +557,7 @@ export function App() {
       offClose()
       offOpen()
       unsub()
+      stopAutosave()
     }
   }, [])
   return (

@@ -23,6 +23,10 @@ const api: CadencePlusApi = {
   clipboardWriteImage: (png) => ipcRenderer.invoke('clipboard:writeImage', png),
   clipboardReadImage: () => ipcRenderer.invoke('clipboard:readImage'),
 
+  writeRecovery: (id, meta, data) => ipcRenderer.invoke('recovery:write', id, meta, data),
+  discardRecovery: (id) => ipcRenderer.invoke('recovery:discard', id),
+  listRecovery: () => ipcRenderer.invoke('recovery:list'),
+
   getSettings: () => ipcRenderer.invoke('settings:get'),
   setSetting: (k, v) => ipcRenderer.invoke('settings:set', k, v),
   addRecent: (p) => ipcRenderer.invoke('settings:addRecent', p),

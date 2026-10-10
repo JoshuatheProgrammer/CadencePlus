@@ -8,6 +8,7 @@ import { _electron as electron } from 'playwright'
 import { mkdirSync, mkdtempSync, existsSync, statSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { tmpdir } from 'node:os'
+import { execSync } from 'node:child_process'
 
 const root = resolve(import.meta.dirname, '..')
 const work = mkdtempSync(join(tmpdir(), 'cplus-e2e-'))
@@ -518,8 +519,42 @@ await check('no uncaught errors in the renderer', async () => {
   expect(pageErrors.length === 0, pageErrors.join('\n'))
 })
 
-await win.screenshot({ path: join(root, 'test-output', 'e2e-final.png') })
-await app.close()
+// Crash recovery runs last: it kills the app and relaunches it.
+await check('autosave + crash recovery restores unsaved work', async () => {
+  await newDoc(64, 64)
+  await selectRect(0, 0, 32, 64)
+  await A('fillWith', '#ff0000')
+  const n = await ev(() => window.__cadencePlus.R.autosaveNow())
+  expect(n === 1, `autosaved ${n}`)
+  // Simulate a crash: kill the whole process tree without letting the app close.
+  execSync(`taskkill /PID ${app.process().pid} /T /F`, { stdio: 'ignore' })
+  await new Promise((r) => setTimeout(r, 1000))
+  const app2 = await electron.launch({
+    args: [root],
+    env: { ...process.env, CADENCE_PLUS_USER_DATA: join(work, 'user'), CADENCE_PLUS_TEST: '1', CADENCE_PLUS_NO_MAXIMIZE: '1' }
+  })
+  try {
+    const w2 = await app2.firstWindow()
+    await w2.waitForSelector('.modal:has-text("Recover unsaved work")', { timeout: 15000 })
+    await w2.click('.modal .btn.primary')
+    await w2.waitForFunction(() => window.__cadencePlus.get().docs.length === 1)
+    await w2.waitForTimeout(300)
+    const p = await w2.evaluate(() => window.__cadencePlus.pixel(10, 10))
+    const q = await w2.evaluate(() => window.__cadencePlus.pixel(50, 10))
+    const dirty = await w2.evaluate(() => {
+      const d = window.__cadencePlus.get().docs[0]
+      return d.history.revision !== d.savedRevision
+    })
+    expect(near(p, [255, 0, 0, 255]) && near(q, [255, 255, 255, 255]), `pixels ${p} ${q}`)
+    expect(dirty, 'recovered document should be unsaved')
+    // The old recovery copy is replaced by a fresh autosave of the recovered document.
+    await w2.waitForTimeout(500)
+    await w2.screenshot({ path: join(root, 'test-output', 'e2e-final.png') })
+    await w2.evaluate(() => window.__cadencePlus.set((s) => ({ docs: s.docs.map((d) => ({ ...d, savedRevision: d.history.revision })) })))
+  } finally {
+    await app2.close()
+  }
+})
 
 const w = Math.max(...results.map((r) => r.name.length))
 for (const r of results) console.log(`${r.ok ? 'PASS' : 'FAIL'}  ${r.name.padEnd(w)}  ${r.detail}`)

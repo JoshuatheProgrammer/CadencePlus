@@ -3,6 +3,20 @@
 /** Image formats Chromium decodes natively (8-bit). PSD/TIFF/RAW need libraries later. */
 export const IMAGE_EXTENSIONS = ['png', 'jpg', 'jpeg', 'webp', 'avif', 'gif', 'bmp']
 
+export interface RecoveryMeta {
+  name: string
+  /** .cadenceimg path the document was saved to, if any. */
+  path: string | null
+  sourcePath: string | null
+}
+
+export interface RecoveryEntry extends RecoveryMeta {
+  id: string
+  /** Autosaved copy on disk. */
+  file: string
+  savedAt: number
+}
+
 export interface CadencePlusApi {
   platform: string
   versions: { app: string; electron: string; chrome: string }
@@ -24,6 +38,10 @@ export interface CadencePlusApi {
   clipboardWriteImage(png: Uint8Array): Promise<void>
   /** PNG bytes of the clipboard image, or null if it holds none. */
   clipboardReadImage(): Promise<Uint8Array | null>
+
+  writeRecovery(id: string, meta: RecoveryMeta, data: Uint8Array): Promise<void>
+  discardRecovery(id: string): Promise<void>
+  listRecovery(): Promise<RecoveryEntry[]>
 
   getSettings(): Promise<Record<string, unknown>>
   setSetting(key: string, value: unknown): Promise<void>

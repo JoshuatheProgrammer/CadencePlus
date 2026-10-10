@@ -130,6 +130,12 @@ export function runGc(): number {
 // Documents
 // ---------------------------------------------------------------------------
 
+/** Set by the recovery module: called when a document's recovery copy is no longer needed. */
+let onDocumentClean: ((id: string) => void) | null = null
+export function setRecoveryHook(fn: (id: string) => void): void {
+  onDocumentClean = fn
+}
+
 export function displayName(ds: DocState): string {
   return ds.path ? baseName(ds.path) : ds.history.present.name
 }
@@ -222,6 +228,7 @@ export async function save(id = get().activeId, saveAs = false): Promise<boolean
     const bytes = await encodeProject(ds.history.present, window.cadencePlus.versions.app)
     await window.cadencePlus.writeFile(path, bytes, true)
     updateDocState(ds.id, (d) => ({ ...d, path, savedRevision: revision }))
+    if (get().docs.find((d) => d.id === ds.id)?.history.revision === revision) onDocumentClean?.(ds.id)
     void rememberRecent(path)
     toast(`Saved ${baseName(path)} (${formatBytes(bytes.length)})`, 'success')
     return true
@@ -242,6 +249,7 @@ async function confirmDiscard(ds: DocState): Promise<boolean> {
     { label: 'Save', value: 'save', primary: true }
   ])
   if (v === 'save') return save(ds.id)
+  if (v === 'discard') onDocumentClean?.(ds.id)
   return v === 'discard'
 }
 
@@ -249,6 +257,7 @@ export async function closeDocument(id = get().activeId): Promise<boolean> {
   const ds = get().docs.find((d) => d.id === id)
   if (!ds) return false
   if (!(await confirmDiscard(ds))) return false
+  onDocumentClean?.(ds.id)
   set((s) => {
     const i = s.docs.findIndex((d) => d.id === id)
     const docs = s.docs.filter((d) => d.id !== id)
