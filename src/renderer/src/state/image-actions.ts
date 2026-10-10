@@ -1,0 +1,352 @@
+/**
+ * Layer, selection, edit and image commands. Pixel work happens in the engine
+ * first; the resulting tile maps are stored with a single edit() each.
+ */
+import { defaultAdjustment, type Adjustment, type AdjustmentKind } from '@core/adjustments'
+import * as E from '@core/edit'
+import { activeLayer, createDocument, TILE, type ImageDocument, type Rect } from '@core/model'
+import * as S from '@core/selection'
+import type { BrushOptions } from '../engine/brush'
+import type { Stroke } from '../engine/brush'
+import { canvasToPng, decodeImage } from '../engine/io'
+import { applyToLayer, bucketSource, canvasSource, colorSource, copyPixels, filterLayer, layerCanvas, mergeToTiles, sampleColor, transformLayers, wandMask, type DocTransform, type Source } from '../engine/pixels'
+import { maskFromCanvas, selectionBounds } from '../engine/selection'
+import { tilesFromCanvas } from '../engine/tiles'
+import { addDocument, attempt, edit, holdingTiles, silent } from './doc-actions'
+import { activeDoc, get, set, toast } from './store'
+
+function doc(): ImageDocument | null {
+  return activeDoc()
+}
+
+// ---------------------------------------------------------------------------
+// Layers
+// ---------------------------------------------------------------------------
+
+export const newLayer = () => edit('New Layer', (d) => void E.addLayer(d))
+export const newFillLayer = (color = get().fg) => edit('New Fill Layer', (d) => void E.addLayer(d, { type: 'fill', color }, E.nextLayerName(d, 'Color Fill')))
+
+export function newAdjustmentLayer(kind: AdjustmentKind): void {
+  const a = defaultAdjustment(kind)
+  edit(`New ${kindLabel(kind)} Layer`, (d) => void E.addLayer(d, { type: 'adjustment', adjustment: a }, E.nextLayerName(d, kindLabel(kind))))
+}
+
+function kindLabel(kind: AdjustmentKind): string {
+  return { brightnessContrast: 'Brightness/Contrast', hueSaturation: 'Hue/Saturation', blackWhite: 'Black & White', invert: 'Invert', sepia: 'Sepia Tone' }[kind]
+}
+
+export const selectLayer = (id: string) => silent((d) => void (d.activeLayerId = id))
+
+export function duplicateLayer(): void {
+  const d = doc()
+  if (d?.activeLayerId) edit('Duplicate Layer', (x) => void E.duplicateLayer(x, d.activeLayerId!))
+}
+
+export function deleteLayer(id = doc()?.activeLayerId): void {
+  if (id) edit('Delete Layer', (x) => E.deleteLayer(x, id))
+}
+
+export const setLayerVisible = (id: string, v: boolean) => edit(v ? 'Show Layer' : 'Hide Layer', (d) => E.setLayerVisible(d, id, v))
+export const setLayerLocked = (id: string, v: boolean) => edit(v ? 'Lock Layer' : 'Unlock Layer', (d) => E.setLayerLocked(d, id, v))
+export const setLayerOpacity = (id: string, o: number) => edit('Layer Opacity', (d) => E.setLayerOpacity(d, id, o), `opacity:${id}`)
+export const setLayerBlend = (id: string, b: Parameters<typeof E.setLayerBlend>[2]) => edit('Blend Mode', (d) => E.setLayerBlend(d, id, b))
+export const renameLayer = (id: string, name: string) => edit('Rename Layer', (d) => E.renameLayer(d, id, name))
+export const setFillColor = (id: string, c: string) => edit('Fill Color', (d) => E.setFillColor(d, id, c), `fill:${id}`)
+export const setAdjustmentParams = (id: string, a: Adjustment) => edit('Adjustment', (d) => E.setAdjustment(d, id, a), `adj:${id}`)
+export const setLayerPosition = (id: string, x: number, y: number, coalesce?: string) => edit('Move', (d) => E.setLayerPosition(d, id, x, y), coalesce)
+export const moveLayerTo = (id: string, to: number) => edit('Reorder Layers', (d) => E.moveLayerTo(d, id, to))
+
+export function reorderActive(dir: 1 | -1): void {
+  const d = doc()
+  if (d?.activeLayerId) edit(dir > 0 ? 'Bring Forward' : 'Send Backward', (x) => E.reorderLayer(x, d.activeLayerId!, dir))
+}
+
+export function nudgeActive(dx: number, dy: number): void {
+  const d = doc()
+  const l = d && activeLayer(d)
+  if (!d || !l) return
+  if (l.content.type !== 'raster') return void toast(`“${l.name}” covers the whole canvas and cannot be moved.`, 'warn')
+  edit('Nudge', (x) => E.setLayerPosition(x, l.id, (l.content as { x: number }).x + dx, (l.content as { y: number }).y + dy), `nudge:${l.id}`)
+}
+
+export function mergeDown(): void {
+  const d = doc()
+  if (!d) return
+  const i = d.layers.findIndex((l) => l.id === d.activeLayerId)
+  if (i <= 0) return void toast('There is no layer below to merge into.', 'warn')
+  const pair = [d.layers[i - 1], d.layers[i]]
+  if (pair.some((l) => !l.visible)) return void toast('Both layers must be visible to merge.', 'warn')
+  const tiles = mergeToTiles(d, pair)
+  edit('Merge Down', (x) => void E.replaceWithMerged(x, pair.map((l) => l.id), { name: pair[0].name, tiles, x: 0, y: 0 }))
+}
+
+export function mergeVisible(): void {
+  const d = doc()
+  if (!d) return
+  const vis = d.layers.filter((l) => l.visible)
+  if (vis.length < 2) return void toast('Merge Visible needs at least two visible layers.', 'warn')
+  const tiles = mergeToTiles(d, vis)
+  edit('Merge Visible', (x) => void E.replaceWithMerged(x, vis.map((l) => l.id), { name: vis[0].name, tiles, x: 0, y: 0 }))
+}
+
+export function flattenImage(): void {
+  const d = doc()
+  if (!d) return
+  // Flatten fills transparency with white and discards hidden layers, like Photoshop.
+  const tiles = mergeToTiles(d, d.layers.filter((l) => l.visible), '#ffffff')
+  edit('Flatten Image', (x) => E.flattenDocument(x, tiles))
+}
+
+export function rasterizeActive(): void {
+  const d = doc()
+  const l = d && activeLayer(d)
+  if (!d || !l) return
+  if (l.content.type !== 'fill') return void toast(l.content.type === 'raster' ? `“${l.name}” is already a pixel layer.` : 'Adjustment layers have no pixels of their own to rasterize.', 'warn')
+  const tiles = tilesFromCanvas(layerCanvas(d, l), 0, 0, 0, 0)
+  edit('Rasterize Layer', (x) => E.rasterizeLayer(x, l.id, tiles))
+}
+
+/** Ctrl+J: copy the selection to a new layer (or duplicate the layer when nothing is selected). */
+export function layerViaCopy(cut = false): void {
+  const d = doc()
+  if (!d) return
+  if (!d.selection) return cut ? void toast('Make a selection first.', 'warn') : duplicateLayer()
+  const l = attempt(() => E.rasterTarget(d, cut ? 'cut from it' : 'copy from it'))
+  if (!l) return
+  const px = copyPixels(d, false)
+  if (!px) return void toast('The selected area is empty.', 'warn')
+  const tiles = tilesFromCanvas(px.canvas, px.x, px.y, 0, 0)
+  const cutTiles = cut ? applyToLayer(d, l.content, colorSource('#000'), { x: 0, y: 0, w: d.width, h: d.height }, 'erase') : null
+  edit(cut ? 'Layer via Cut' : 'Layer via Copy', (x) => {
+    if (cutTiles) E.setLayerTiles(x, l.id, cutTiles)
+    E.addLayer(x, { type: 'raster', x: 0, y: 0, tiles })
+  })
+}
+
+/** Ctrl+click a layer thumbnail: select its opaque pixels. */
+export function selectLayerPixels(id: string): void {
+  const d = doc()
+  const l = d?.layers.find((x) => x.id === id)
+  if (!d || !l || l.content.type === 'adjustment') return
+  const maskId = maskFromCanvas(layerCanvas(d, l, 'selpx'))
+  edit('Load Selection', (x) => E.setSelection(x, { steps: [{ op: 'add', shape: { kind: 'mask', maskId, x: 0, y: 0 } }] }))
+}
+
+// ---------------------------------------------------------------------------
+// Selection
+// ---------------------------------------------------------------------------
+
+export function selectAll(): void {
+  const d = doc()
+  if (d) edit('Select All', (x) => E.setSelection(x, S.selectAll(d.width, d.height)))
+}
+
+export function deselect(): void {
+  if (doc()?.selection) edit('Deselect', (x) => E.setSelection(x, null))
+}
+
+export function invertSelection(): void {
+  const d = doc()
+  if (!d) return
+  if (!d.selection) return void toast('There is no selection to invert.', 'warn')
+  edit('Inverse', (x) => E.setSelection(x, S.invert(d.selection)))
+}
+
+export function featherSelection(radius: number): void {
+  const d = doc()
+  if (d?.selection) edit('Feather', (x) => E.setSelection(x, S.feather(d.selection, radius)))
+}
+
+export function addSelectionShape(shape: S.SelShape, mode: S.SelMode, label: string): void {
+  const d = doc()
+  if (d) edit(label, (x) => E.setSelection(x, S.combine(d.selection, mode, shape)))
+}
+
+export function wandSelect(x: number, y: number, mode: S.SelMode): void {
+  const d = doc()
+  if (!d) return
+  const o = get().options.wand
+  const r = wandMask(d, x, y, o.tolerance, o.contiguous, o.sampleAll)
+  if (!r) {
+    if (mode === 'replace') deselect()
+    return
+  }
+  addSelectionShape({ kind: 'mask', maskId: r.maskId, x: 0, y: 0 }, mode, 'Magic Wand')
+}
+
+export function cropToSelection(): void {
+  const d = doc()
+  if (!d) return
+  if (!d.selection) return void toast('Make a selection first.', 'warn')
+  const b = selectionBounds(d.selection, d.width, d.height)
+  if (!b) return void toast('The selection is empty.', 'warn')
+  edit('Crop', (x) => E.cropDocument(x, b))
+}
+
+export function crop(r: Rect): void {
+  edit('Crop', (x) => E.cropDocument(x, r))
+}
+
+// ---------------------------------------------------------------------------
+// Painting & filling
+// ---------------------------------------------------------------------------
+
+/** The active pixel layer, or null after explaining why it can't be painted. */
+export function paintTarget(what = 'paint on it') {
+  const d = doc()
+  if (!d) return null
+  return attempt(() => E.rasterTarget(d, what)) ?? null
+}
+
+export function commitStroke(stroke: Stroke, label: string): void {
+  const d = doc()
+  const l = d && paintTarget()
+  if (!d || !l || !stroke.bounds) return
+  const tiles = applyToLayer(d, l.content, canvasSource(stroke.canvas), stroke.bounds, stroke.erase ? 'erase' : 'over', stroke.opacity)
+  edit(label, (x) => E.setLayerTiles(x, l.id, tiles))
+}
+
+function fillArea(source: Source, mode: 'over' | 'erase', opacity: number, label: string): void {
+  const d = doc()
+  const l = d && paintTarget(mode === 'erase' ? 'clear it' : 'fill it')
+  if (!d || !l) return
+  const r = d.selection ? selectionBounds(d.selection, d.width, d.height) : { x: 0, y: 0, w: d.width, h: d.height }
+  if (!r) return void toast('The selection is empty.', 'warn')
+  const tiles = applyToLayer(d, l.content, source, r, mode, opacity)
+  edit(label, (x) => E.setLayerTiles(x, l.id, tiles))
+}
+
+export const fillWith = (color: string) => fillArea(colorSource(color), 'over', 1, 'Fill')
+export const clearSelected = () => fillArea(colorSource('#000'), 'erase', 1, 'Clear')
+
+export function bucketFill(x: number, y: number): void {
+  const d = doc()
+  const l = d && paintTarget('fill it')
+  if (!d || !l) return
+  const o = get().options.bucket
+  const r = bucketSource(d, x, y, o.tolerance, o.contiguous, o.sampleAll, get().fg)
+  if (!r) return
+  const tiles = applyToLayer(d, l.content, r.source, r.bounds, 'over', o.opacity / 100)
+  edit('Paint Bucket', (z) => E.setLayerTiles(z, l.id, tiles))
+}
+
+export function gradientFill(x0: number, y0: number, x1: number, y1: number): void {
+  const d = doc()
+  const l = d && paintTarget('draw a gradient on it')
+  if (!d || !l) return
+  const s = get()
+  const o = s.options.gradient
+  let a = s.fg
+  let b = o.toTransparent ? s.fg + '00' : s.bg
+  if (o.reverse) [a, b] = [b, a]
+  const len = Math.hypot(x1 - x0, y1 - y0)
+  if (len < 1) return
+  const source: Source = (g, ox, oy) => {
+    g.save()
+    g.translate(-ox, -oy)
+    const grad = o.kind === 'linear' ? g.createLinearGradient(x0, y0, x1, y1) : g.createRadialGradient(x0, y0, 0, x0, y0, len)
+    grad.addColorStop(0, a)
+    grad.addColorStop(1, b)
+    g.fillStyle = grad
+    g.fillRect(ox, oy, TILE, TILE)
+    g.restore()
+  }
+  const r = d.selection ? selectionBounds(d.selection, d.width, d.height) : { x: 0, y: 0, w: d.width, h: d.height }
+  if (!r) return
+  const tiles = applyToLayer(d, l.content, source, r, 'over', o.opacity / 100)
+  edit('Gradient', (z) => E.setLayerTiles(z, l.id, tiles))
+}
+
+export function pickColor(x: number, y: number, toBackground: boolean): void {
+  const d = doc()
+  if (!d) return
+  const o = get().options.eyedropper
+  const c = sampleColor(d, x, y, o.sampleAll, o.size)
+  if (c) set(toBackground ? { bg: c } : { fg: c })
+}
+
+// ---------------------------------------------------------------------------
+// Adjustments, filters & image transforms
+// ---------------------------------------------------------------------------
+
+export function applyFilter(filter: string, label: string): void {
+  const d = doc()
+  const l = d && paintTarget('apply an adjustment')
+  if (!d || !l || filter === 'none') return
+  const tiles = filterLayer(d, l.content, filter)
+  edit(label, (x) => E.setLayerTiles(x, l.id, tiles))
+}
+
+export function transformImage(t: DocTransform, label: string): void {
+  const d = doc()
+  if (!d) return
+  const r = attempt(() => transformLayers(d, t))
+  if (r) edit(label, (x) => E.transformDocument(x, r.width, r.height, r.layers))
+}
+
+export function resizeCanvas(w: number, h: number, ax: number, ay: number): void {
+  edit('Canvas Size', (x) => E.resizeCanvas(x, w, h, ax, ay))
+}
+
+// ---------------------------------------------------------------------------
+// Clipboard
+// ---------------------------------------------------------------------------
+
+/** Where the last copy came from, to paste back in place. */
+let lastCopy: { w: number; h: number; x: number; y: number } | null = null
+
+export async function copy(merged = false, cut = false): Promise<void> {
+  const d = doc()
+  if (!d) return
+  if (!merged && !attempt(() => E.rasterTarget(d, cut ? 'cut from it' : 'copy from it'))) return
+  const px = copyPixels(d, merged)
+  if (!px) return void toast('The selected area is empty.', 'warn')
+  lastCopy = { w: px.canvas.width, h: px.canvas.height, x: px.x, y: px.y }
+  await window.cadencePlus.clipboardWriteImage(await canvasToPng(px.canvas))
+  if (cut) clearSelected()
+}
+
+export async function paste(): Promise<void> {
+  const png = await window.cadencePlus.clipboardReadImage()
+  if (!png) return void toast('The clipboard does not contain an image.', 'warn')
+  await holdingTiles(async () => {
+    const bmp = await decodeImage(png, 'png')
+    const d = doc()
+    if (!d) {
+      const tiles = tilesFromCanvas(bmp, 0, 0, 0, 0)
+      addDocument(createDocument({ name: 'Pasted', width: bmp.width, height: bmp.height, tiles, baseName: 'Layer 1' }), { label: 'New from Clipboard' })
+      bmp.close()
+      return
+    }
+    let x = Math.round((d.width - bmp.width) / 2)
+    let y = Math.round((d.height - bmp.height) / 2)
+    if (lastCopy && lastCopy.w === bmp.width && lastCopy.h === bmp.height) ({ x, y } = lastCopy)
+    const tiles = tilesFromCanvas(bmp, x, y, 0, 0)
+    bmp.close()
+    edit('Paste', (z) => void E.addLayer(z, { type: 'raster', x: 0, y: 0, tiles }))
+  })
+}
+
+// ---------------------------------------------------------------------------
+// Tool settings shortcuts
+// ---------------------------------------------------------------------------
+
+/** [ and ]: brush size steps like Photoshop's. */
+export function stepBrushSize(dir: 1 | -1): void {
+  const s = get()
+  const key = s.tool === 'eraser' ? 'eraser' : 'brush'
+  const cur = s.options[key].size
+  const step = cur < 10 ? 1 : cur < 50 ? 5 : cur < 100 ? 10 : cur < 300 ? 25 : 50
+  const size = Math.max(1, Math.min(2500, cur + dir * step))
+  set({ options: { ...s.options, [key]: { ...s.options[key], size } as BrushOptions } })
+}
+
+export function stepHardness(dir: 1 | -1): void {
+  const s = get()
+  const key = s.tool === 'eraser' ? 'eraser' : 'brush'
+  const hardness = Math.max(0, Math.min(100, s.options[key].hardness + dir * 25))
+  set({ options: { ...s.options, [key]: { ...s.options[key], hardness } } })
+}
+
+export const swapColors = () => set((s) => ({ fg: s.bg, bg: s.fg }))
+export const defaultColors = () => set({ fg: '#000000', bg: '#ffffff' })

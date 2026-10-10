@@ -1,0 +1,234 @@
+/**
+ * The compositor: draws a document into a canvas through a scale + offset.
+ * One path serves the viewport, the navigator, thumbnails, sampling and
+ * export, so what you see is what you save.
+ *
+ * Layers composite onto a transparent target (blend modes see only layers,
+ * never the checkerboard). Only tiles inside the target are drawn, and tile
+ * edges are snapped to whole target pixels so scaled tiles never show seams.
+ */
+import { adjustmentFilter, scaleFilter } from '@core/adjustments'
+import { parseTileKey, tileKey, TILE, type ImageDocument, type Layer, type LayerContent } from '@core/model'
+import { layerMip, mipLevel } from './mips'
+import { selectionMask } from './selection'
+import { getTile, poolCanvas, type Ctx2D } from './tiles'
+
+/** target = doc × scale + (ox, oy) */
+export interface Xf {
+  scale: number
+  ox: number
+  oy: number
+}
+
+export interface StrokePreview {
+  layerId: string
+  /** Document-sized stamp buffer. */
+  canvas: OffscreenCanvas
+  opacity: number
+  erase: boolean
+  /** Generation counter; bump to re-render while the stroke grows. */
+  rev: number
+}
+
+/** A destructive filter being previewed on one layer (adjustment dialogs). */
+export interface FilterPreview {
+  layerId: string
+  filter: string
+}
+
+export interface RenderOptions {
+  xf: Xf
+  width: number
+  height: number
+  stroke?: StrokePreview | null
+  filterPreview?: FilterPreview | null
+  /** Render just this layer at full opacity, normal blend (thumbnails, sampling). */
+  onlyLayer?: string
+}
+
+type Raster = Extract<LayerContent, { type: 'raster' }>
+
+export function compositeOp(l: Layer): GlobalCompositeOperation {
+  return l.blend === 'normal' ? 'source-over' : (l.blend as GlobalCompositeOperation)
+}
+
+/** Document rect in target pixels, snapped. */
+export function docRectOnTarget(doc: { width: number; height: number }, xf: Xf): { x: number; y: number; w: number; h: number } {
+  const x0 = Math.round(xf.ox)
+  const y0 = Math.round(xf.oy)
+  return { x: x0, y: y0, w: Math.max(1, Math.round(xf.ox + doc.width * xf.scale) - x0), h: Math.max(1, Math.round(xf.oy + doc.height * xf.scale) - y0) }
+}
+
+export function drawRaster(ctx: Ctx2D, c: Raster, xf: Xf, W: number, H: number, layerId?: string): void {
+  const s = xf.scale
+  const level = layerId ? mipLevel(s) : 0
+  if (level > 0) {
+    const m = layerMip(layerId!, c, level)
+    if (m) {
+      // The mip is within 2× of the target scale, so bilinear filtering is enough.
+      const x0 = Math.round(xf.ox + (c.x + m.tx0 * TILE) * s)
+      const y0 = Math.round(xf.oy + (c.y + m.ty0 * TILE) * s)
+      const x1 = Math.round(xf.ox + (c.x + (m.tx0 + m.cols) * TILE) * s)
+      const y1 = Math.round(xf.oy + (c.y + (m.ty0 + m.rows) * TILE) * s)
+      ctx.imageSmoothingEnabled = true
+      ctx.imageSmoothingQuality = 'low'
+      ctx.drawImage(m.canvas, x0, y0, Math.max(1, x1 - x0), Math.max(1, y1 - y0))
+      return
+    }
+  }
+  ctx.imageSmoothingEnabled = s < 1
+  ctx.imageSmoothingQuality = s < 0.5 ? 'medium' : 'low'
+  const tx0 = Math.floor((-xf.ox / s - c.x) / TILE)
+  const ty0 = Math.floor((-xf.oy / s - c.y) / TILE)
+  const tx1 = Math.ceil(((W - xf.ox) / s - c.x) / TILE)
+  const ty1 = Math.ceil(((H - xf.oy) / s - c.y) / TILE)
+  const draw = (tx: number, ty: number, id: string) => {
+    const bmp = getTile(id)
+    if (!bmp) return
+    const x0 = Math.round(xf.ox + (c.x + tx * TILE) * s)
+    const y0 = Math.round(xf.oy + (c.y + ty * TILE) * s)
+    const x1 = Math.max(x0 + 1, Math.round(xf.ox + (c.x + (tx + 1) * TILE) * s))
+    const y1 = Math.max(y0 + 1, Math.round(xf.oy + (c.y + (ty + 1) * TILE) * s))
+    ctx.drawImage(bmp, x0, y0, x1 - x0, y1 - y0)
+  }
+  const keys = Object.keys(c.tiles)
+  if (keys.length <= (tx1 - tx0) * (ty1 - ty0)) {
+    for (const k of keys) {
+      const [tx, ty] = parseTileKey(k)
+      if (tx >= tx0 && tx < tx1 && ty >= ty0 && ty < ty1) draw(tx, ty, c.tiles[k])
+    }
+  } else {
+    for (let ty = ty0; ty < ty1; ty++)
+      for (let tx = tx0; tx < tx1; tx++) {
+        const id = c.tiles[tileKey(tx, ty)]
+        if (id) draw(tx, ty, id)
+      }
+  }
+}
+
+/** Draws a raster or fill layer's own pixels (no opacity/blend handling). */
+function drawContent(ctx: Ctx2D, l: Layer, doc: ImageDocument, xf: Xf, W: number, H: number): void {
+  if (l.content.type === 'raster') drawRaster(ctx, l.content, xf, W, H, l.id)
+  else if (l.content.type === 'fill') {
+    const r = docRectOnTarget(doc, xf)
+    ctx.fillStyle = l.content.color
+    ctx.fillRect(r.x, r.y, r.w, r.h)
+  }
+}
+
+function drawSelectionMask(ctx: Ctx2D, doc: ImageDocument, xf: Xf): void {
+  if (!doc.selection) return
+  const m = selectionMask(doc.selection, doc.width, doc.height)
+  const r = docRectOnTarget(doc, xf)
+  ctx.save()
+  ctx.imageSmoothingEnabled = xf.scale < 1
+  ctx.imageSmoothingQuality = 'low'
+  ctx.globalCompositeOperation = 'destination-in'
+  ctx.drawImage(m, r.x, r.y, r.w, r.h)
+  ctx.restore()
+}
+
+/** Renders `doc` into `target` (cleared first). */
+export function renderDocument(target: OffscreenCanvas | HTMLCanvasElement, doc: ImageDocument, o: RenderOptions): void {
+  const W = o.width
+  const H = o.height
+  const ctx = target.getContext('2d') as Ctx2D
+  const r = docRectOnTarget(doc, o.xf)
+  ctx.save()
+  ctx.setTransform(1, 0, 0, 1, 0, 0)
+  ctx.clearRect(0, 0, W, H)
+  ctx.beginPath()
+  ctx.rect(r.x, r.y, r.w, r.h)
+  ctx.clip()
+
+  const only = o.onlyLayer ? doc.layers.find((l) => l.id === o.onlyLayer) : null
+  const layers = only ? [{ ...only, visible: true, opacity: 1, blend: 'normal' as const }] : doc.layers
+
+  for (const l of layers) {
+    if (!l.visible) continue
+    const op = compositeOp(l)
+
+    if (l.content.type === 'adjustment') {
+      const f = scaleFilter(adjustmentFilter(l.content.adjustment), o.xf.scale)
+      if (f === 'none' || l.opacity <= 0) continue
+      const copy = poolCanvas('render.adjust', W, H)
+      copy.getContext('2d')!.drawImage(target, 0, 0)
+      ctx.save()
+      if (l.opacity >= 1 && op === 'source-over') ctx.clearRect(r.x, r.y, r.w, r.h)
+      ctx.globalAlpha = l.opacity
+      ctx.globalCompositeOperation = op
+      ctx.filter = f
+      ctx.drawImage(copy, 0, 0)
+      ctx.restore()
+      continue
+    }
+
+    const stroke = o.stroke && o.stroke.layerId === l.id ? o.stroke : null
+    const fp = o.filterPreview && o.filterPreview.layerId === l.id ? o.filterPreview : null
+    if (!stroke && !fp) {
+      ctx.save()
+      ctx.globalAlpha = l.opacity
+      ctx.globalCompositeOperation = op
+      drawContent(ctx, l, doc, o.xf, W, H)
+      ctx.restore()
+      continue
+    }
+
+    // Layers being edited render through a temporary canvas first.
+    const tmp = poolCanvas('render.layer', W, H)
+    const tg = tmp.getContext('2d')!
+    drawContent(tg, l, doc, o.xf, W, H)
+
+    if (fp) {
+      const f = scaleFilter(fp.filter, o.xf.scale)
+      const filtered = poolCanvas('render.filtered', W, H)
+      const fg = filtered.getContext('2d')!
+      fg.filter = f
+      fg.drawImage(tmp, 0, 0)
+      fg.filter = 'none'
+      if (doc.selection) {
+        drawSelectionMask(fg, doc, o.xf)
+        // tmp = tmp × (1 − mask) + filtered × mask
+        tg.save()
+        tg.globalCompositeOperation = 'destination-out'
+        const m = selectionMask(doc.selection, doc.width, doc.height)
+        tg.imageSmoothingEnabled = o.xf.scale < 1
+        tg.drawImage(m, r.x, r.y, r.w, r.h)
+        tg.globalCompositeOperation = 'lighter'
+        tg.drawImage(filtered, 0, 0)
+        tg.restore()
+      } else {
+        tg.clearRect(0, 0, W, H)
+        tg.drawImage(filtered, 0, 0)
+      }
+    }
+
+    if (stroke) {
+      const sc = poolCanvas('render.stroke', W, H)
+      const sg = sc.getContext('2d')!
+      sg.imageSmoothingEnabled = o.xf.scale < 1
+      sg.imageSmoothingQuality = 'low'
+      sg.drawImage(stroke.canvas, r.x, r.y, r.w, r.h)
+      drawSelectionMask(sg, doc, o.xf)
+      tg.save()
+      tg.globalAlpha = stroke.opacity
+      tg.globalCompositeOperation = stroke.erase ? 'destination-out' : 'source-over'
+      tg.drawImage(sc, 0, 0)
+      tg.restore()
+    }
+
+    ctx.save()
+    ctx.globalAlpha = l.opacity
+    ctx.globalCompositeOperation = op
+    ctx.drawImage(tmp, 0, 0)
+    ctx.restore()
+  }
+  ctx.restore()
+}
+
+/** The full composite at 1:1 in a document-sized canvas. */
+export function renderComposite(doc: ImageDocument, key = 'composite', onlyLayer?: string): OffscreenCanvas {
+  const c = poolCanvas(key, doc.width, doc.height)
+  renderDocument(c, doc, { xf: { scale: 1, ox: 0, oy: 0 }, width: doc.width, height: doc.height, onlyLayer })
+  return c
+}

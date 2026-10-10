@@ -1,0 +1,240 @@
+/**
+ * Command registry: every menu item and shortcut runs a command, so menus,
+ * keys and tests share one path. Keys use "Ctrl+Shift+Alt+Key" notation.
+ */
+import { resetWorkspace, togglePanel } from '../ui/workspace'
+import * as D from './doc-actions'
+import * as A from './image-actions'
+import { activeDoc, activeDocState, get, set, setToolOption, toast, type PanelId, type ToolId } from './store'
+import { TOOL_LIST } from './tools'
+
+export interface Command {
+  id: string
+  label: string
+  keys?: string[]
+  run: () => void
+  /** Greyed out in menus when false. */
+  enabled?: () => boolean
+}
+
+const hasDoc = () => !!activeDoc()
+const hasSel = () => !!activeDoc()?.selection
+const canUndo = () => !!activeDocState()?.history.past.length
+const canRedo = () => !!activeDocState()?.history.future.length
+
+function setTool(id: ToolId): void {
+  const t = TOOL_LIST.find((x) => x.id === id)
+  if (!t) return
+  if (t.unavailable) return void toast(t.unavailable, 'info')
+  set({ tool: id })
+}
+
+export const COMMANDS: Command[] = [
+  // File
+  { id: 'file.new', label: 'New…', keys: ['Ctrl+N'], run: () => set({ dialog: { kind: 'newDocument' } }) },
+  { id: 'file.open', label: 'Open…', keys: ['Ctrl+O'], run: () => void D.openDialog() },
+  { id: 'file.close', label: 'Close', keys: ['Ctrl+W'], run: () => void D.closeDocument(), enabled: hasDoc },
+  { id: 'file.closeAll', label: 'Close All', keys: ['Ctrl+Alt+W'], run: () => void D.closeAll(), enabled: hasDoc },
+  { id: 'file.save', label: 'Save', keys: ['Ctrl+S'], run: () => void D.save(), enabled: hasDoc },
+  { id: 'file.saveAs', label: 'Save As…', keys: ['Ctrl+Shift+S'], run: () => void D.save(get().activeId, true), enabled: hasDoc },
+  { id: 'file.export', label: 'Export As…', keys: ['Ctrl+Alt+Shift+W'], run: () => set({ dialog: { kind: 'export' } }), enabled: hasDoc },
+
+  // Edit
+  { id: 'edit.undo', label: 'Undo', keys: ['Ctrl+Z'], run: D.undo, enabled: canUndo },
+  { id: 'edit.redo', label: 'Redo', keys: ['Ctrl+Shift+Z', 'Ctrl+Y'], run: D.redo, enabled: canRedo },
+  { id: 'edit.cut', label: 'Cut', keys: ['Ctrl+X'], run: () => void A.copy(false, true), enabled: hasDoc },
+  { id: 'edit.copy', label: 'Copy', keys: ['Ctrl+C'], run: () => void A.copy(false), enabled: hasDoc },
+  { id: 'edit.copyMerged', label: 'Copy Merged', keys: ['Ctrl+Shift+C'], run: () => void A.copy(true), enabled: hasDoc },
+  { id: 'edit.paste', label: 'Paste', keys: ['Ctrl+V'], run: () => void A.paste() },
+  { id: 'edit.clear', label: 'Clear', keys: ['Delete', 'Backspace'], run: A.clearSelected, enabled: hasDoc },
+  { id: 'edit.fillFg', label: 'Fill with Foreground Color', keys: ['Alt+Backspace', 'Alt+Delete'], run: () => A.fillWith(get().fg), enabled: hasDoc },
+  { id: 'edit.fillBg', label: 'Fill with Background Color', keys: ['Ctrl+Backspace', 'Ctrl+Delete'], run: () => A.fillWith(get().bg), enabled: hasDoc },
+
+  // Image
+  { id: 'image.brightnessContrast', label: 'Brightness/Contrast…', run: () => set({ dialog: { kind: 'adjust', adjustment: 'brightnessContrast' } }), enabled: hasDoc },
+  { id: 'image.hueSaturation', label: 'Hue/Saturation…', keys: ['Ctrl+U'], run: () => set({ dialog: { kind: 'adjust', adjustment: 'hueSaturation' } }), enabled: hasDoc },
+  { id: 'image.blackWhite', label: 'Black & White…', keys: ['Ctrl+Alt+Shift+B'], run: () => set({ dialog: { kind: 'adjust', adjustment: 'blackWhite' } }), enabled: hasDoc },
+  { id: 'image.sepia', label: 'Sepia Tone…', run: () => set({ dialog: { kind: 'adjust', adjustment: 'sepia' } }), enabled: hasDoc },
+  { id: 'image.invert', label: 'Invert', keys: ['Ctrl+I'], run: () => A.applyFilter('invert(1)', 'Invert'), enabled: hasDoc },
+  { id: 'image.desaturate', label: 'Desaturate', keys: ['Ctrl+Shift+U'], run: () => A.applyFilter('grayscale(1)', 'Desaturate'), enabled: hasDoc },
+  { id: 'image.imageSize', label: 'Image Size…', keys: ['Ctrl+Alt+I'], run: () => set({ dialog: { kind: 'imageSize' } }), enabled: hasDoc },
+  { id: 'image.canvasSize', label: 'Canvas Size…', keys: ['Ctrl+Alt+C'], run: () => set({ dialog: { kind: 'canvasSize' } }), enabled: hasDoc },
+  { id: 'image.rotateCw', label: 'Rotate 90° Clockwise', run: () => A.transformImage({ kind: 'rotate', turns: 1 }, 'Rotate Canvas'), enabled: hasDoc },
+  { id: 'image.rotateCcw', label: 'Rotate 90° Counter Clockwise', run: () => A.transformImage({ kind: 'rotate', turns: 3 }, 'Rotate Canvas'), enabled: hasDoc },
+  { id: 'image.rotate180', label: 'Rotate 180°', run: () => A.transformImage({ kind: 'rotate', turns: 2 }, 'Rotate Canvas'), enabled: hasDoc },
+  { id: 'image.flipH', label: 'Flip Canvas Horizontal', run: () => A.transformImage({ kind: 'flip', axis: 'h' }, 'Flip Canvas Horizontal'), enabled: hasDoc },
+  { id: 'image.flipV', label: 'Flip Canvas Vertical', run: () => A.transformImage({ kind: 'flip', axis: 'v' }, 'Flip Canvas Vertical'), enabled: hasDoc },
+  { id: 'image.crop', label: 'Crop to Selection', run: A.cropToSelection, enabled: hasSel },
+
+  // Layer
+  { id: 'layer.new', label: 'New Layer', keys: ['Ctrl+Shift+N'], run: A.newLayer, enabled: hasDoc },
+  { id: 'layer.newFill', label: 'New Fill Layer (Foreground Color)', run: () => A.newFillLayer(), enabled: hasDoc },
+  { id: 'layer.adj.brightnessContrast', label: 'Brightness/Contrast', run: () => A.newAdjustmentLayer('brightnessContrast'), enabled: hasDoc },
+  { id: 'layer.adj.hueSaturation', label: 'Hue/Saturation', run: () => A.newAdjustmentLayer('hueSaturation'), enabled: hasDoc },
+  { id: 'layer.adj.blackWhite', label: 'Black & White', run: () => A.newAdjustmentLayer('blackWhite'), enabled: hasDoc },
+  { id: 'layer.adj.invert', label: 'Invert', run: () => A.newAdjustmentLayer('invert'), enabled: hasDoc },
+  { id: 'layer.adj.sepia', label: 'Sepia Tone', run: () => A.newAdjustmentLayer('sepia'), enabled: hasDoc },
+  { id: 'layer.duplicate', label: 'Duplicate Layer', run: A.duplicateLayer, enabled: hasDoc },
+  { id: 'layer.viaCopy', label: 'New Layer via Copy', keys: ['Ctrl+J'], run: () => A.layerViaCopy(false), enabled: hasDoc },
+  { id: 'layer.viaCut', label: 'New Layer via Cut', keys: ['Ctrl+Shift+J'], run: () => A.layerViaCopy(true), enabled: hasSel },
+  { id: 'layer.delete', label: 'Delete Layer', run: () => A.deleteLayer(), enabled: hasDoc },
+  { id: 'layer.rasterize', label: 'Rasterize Layer', run: A.rasterizeActive, enabled: hasDoc },
+  { id: 'layer.forward', label: 'Bring Forward', keys: ['Ctrl+]'], run: () => A.reorderActive(1), enabled: hasDoc },
+  { id: 'layer.backward', label: 'Send Backward', keys: ['Ctrl+['], run: () => A.reorderActive(-1), enabled: hasDoc },
+  { id: 'layer.mergeDown', label: 'Merge Down', keys: ['Ctrl+E'], run: A.mergeDown, enabled: hasDoc },
+  { id: 'layer.mergeVisible', label: 'Merge Visible', keys: ['Ctrl+Shift+E'], run: A.mergeVisible, enabled: hasDoc },
+  { id: 'layer.flatten', label: 'Flatten Image', run: A.flattenImage, enabled: hasDoc },
+
+  // Select
+  { id: 'select.all', label: 'All', keys: ['Ctrl+A'], run: A.selectAll, enabled: hasDoc },
+  { id: 'select.deselect', label: 'Deselect', keys: ['Ctrl+D'], run: A.deselect, enabled: hasSel },
+  { id: 'select.inverse', label: 'Inverse', keys: ['Ctrl+Shift+I'], run: A.invertSelection, enabled: hasSel },
+  { id: 'select.feather', label: 'Feather…', keys: ['Shift+F6'], run: () => set({ dialog: { kind: 'feather' } }), enabled: hasSel },
+
+  // Filter
+  { id: 'filter.blur', label: 'Gaussian Blur…', run: () => set({ dialog: { kind: 'blur' } }), enabled: hasDoc },
+
+  // View
+  { id: 'view.zoomIn', label: 'Zoom In', keys: ['Ctrl+=', 'Ctrl+Shift+='], run: D.zoomIn, enabled: hasDoc },
+  { id: 'view.zoomOut', label: 'Zoom Out', keys: ['Ctrl+-'], run: D.zoomOut, enabled: hasDoc },
+  { id: 'view.fit', label: 'Fit on Screen', keys: ['Ctrl+0'], run: D.fitOnScreen, enabled: hasDoc },
+  { id: 'view.fill', label: 'Fill Screen', run: D.fillScreen, enabled: hasDoc },
+  { id: 'view.actual', label: '100%', keys: ['Ctrl+1'], run: D.actualPixels, enabled: hasDoc },
+  { id: 'view.rulers', label: 'Rulers', keys: ['Ctrl+R'], run: () => set((s) => ({ showRulers: !s.showRulers })) },
+  { id: 'view.pixelGrid', label: 'Pixel Grid', run: () => set((s) => ({ showPixelGrid: !s.showPixelGrid })) },
+  { id: 'view.nextDoc', label: 'Next Document', keys: ['Ctrl+Tab'], run: () => cycleDoc(1), enabled: hasDoc },
+  { id: 'view.prevDoc', label: 'Previous Document', keys: ['Ctrl+Shift+Tab'], run: () => cycleDoc(-1), enabled: hasDoc },
+
+  // Window
+  { id: 'window.reset', label: 'Reset Workspace', run: resetWorkspace },
+
+  // Help
+  { id: 'help.shortcuts', label: 'Keyboard Shortcuts', keys: ['Ctrl+/'], run: () => set({ dialog: { kind: 'shortcuts' } }) },
+  { id: 'help.about', label: 'About Cadence+', run: () => set({ dialog: { kind: 'about' } }) },
+
+  // Tools & colours
+  ...TOOL_LIST.filter((t) => !t.unavailable).map((t) => ({ id: `tool.${t.id}`, label: `${t.label} Tool`, keys: [t.key], run: () => setTool(t.id) })),
+  { id: 'tool.sizeDown', label: 'Decrease Brush Size', keys: ['['], run: () => A.stepBrushSize(-1) },
+  { id: 'tool.sizeUp', label: 'Increase Brush Size', keys: [']'], run: () => A.stepBrushSize(1) },
+  { id: 'tool.softer', label: 'Decrease Brush Hardness', keys: ['Shift+['], run: () => A.stepHardness(-1) },
+  { id: 'tool.harder', label: 'Increase Brush Hardness', keys: ['Shift+]'], run: () => A.stepHardness(1) },
+  { id: 'color.swap', label: 'Swap Foreground and Background Colors', keys: ['X'], run: A.swapColors },
+  { id: 'color.default', label: 'Default Colors', keys: ['D'], run: A.defaultColors },
+  ...['1', '2', '3', '4', '5', '6', '7', '8', '9', '0'].map((k) => ({ id: `tool.opacity${k}`, label: `Tool Opacity ${k === '0' ? 100 : Number(k) * 10}%`, keys: [k], run: () => setOpacityKey(k) })),
+  { id: 'layer.nudgeLeft', label: 'Nudge Left', keys: ['ArrowLeft'], run: () => nudge(-1, 0) },
+  { id: 'layer.nudgeRight', label: 'Nudge Right', keys: ['ArrowRight'], run: () => nudge(1, 0) },
+  { id: 'layer.nudgeUp', label: 'Nudge Up', keys: ['ArrowUp'], run: () => nudge(0, -1) },
+  { id: 'layer.nudgeDown', label: 'Nudge Down', keys: ['ArrowDown'], run: () => nudge(0, 1) },
+  { id: 'layer.nudgeLeft10', label: 'Nudge Left 10 px', keys: ['Shift+ArrowLeft'], run: () => nudge(-10, 0) },
+  { id: 'layer.nudgeRight10', label: 'Nudge Right 10 px', keys: ['Shift+ArrowRight'], run: () => nudge(10, 0) },
+  { id: 'layer.nudgeUp10', label: 'Nudge Up 10 px', keys: ['Shift+ArrowUp'], run: () => nudge(0, -10) },
+  { id: 'layer.nudgeDown10', label: 'Nudge Down 10 px', keys: ['Shift+ArrowDown'], run: () => nudge(0, 10) },
+  { id: 'crop.commit', label: 'Commit Crop', keys: ['Enter'], run: commitCrop, enabled: () => !!get().crop },
+  { id: 'crop.cancel', label: 'Cancel Crop', keys: ['Escape'], run: () => set({ crop: null }), enabled: () => !!get().crop }
+]
+
+const byId = new Map(COMMANDS.map((c) => [c.id, c]))
+export const command = (id: string): Command | undefined => byId.get(id)
+
+export function run(id: string): void {
+  const c = byId.get(id)
+  if (c && (c.enabled?.() ?? true)) c.run()
+}
+
+export function keysFor(id: string): string[] {
+  return byId.get(id)?.keys ?? []
+}
+
+function cycleDoc(dir: 1 | -1): void {
+  const s = get()
+  const i = s.docs.findIndex((d) => d.id === s.activeId)
+  const n = s.docs.length
+  if (n > 1) set({ activeId: s.docs[(i + dir + n) % n].id, crop: null })
+}
+
+function nudge(dx: number, dy: number): void {
+  if (get().tool === 'move') A.nudgeActive(dx, dy)
+}
+
+function setOpacityKey(k: string): void {
+  const t = get().tool
+  const v = k === '0' ? 100 : Number(k) * 10
+  if (t === 'brush' || t === 'eraser') setToolOption(t, { opacity: v })
+  else if (t === 'bucket' || t === 'gradient') setToolOption(t, { opacity: v })
+}
+
+export function commitCrop(): void {
+  const r = get().crop
+  if (!r) return
+  set({ crop: null })
+  if (r.w >= 1 && r.h >= 1) A.crop(r)
+}
+
+export function panelCommand(id: PanelId): void {
+  togglePanel(id)
+}
+
+// ---------------------------------------------------------------------------
+// Keyboard
+// ---------------------------------------------------------------------------
+
+const CODE_KEYS: Record<string, string> = {
+  BracketLeft: '[',
+  BracketRight: ']',
+  Equal: '=',
+  Minus: '-',
+  Slash: '/',
+  Backslash: '\\',
+  Semicolon: ';',
+  Quote: "'",
+  Comma: ',',
+  Period: '.',
+  Backquote: '`',
+  Space: 'Space',
+  NumpadAdd: '=',
+  NumpadSubtract: '-'
+}
+
+/** "Ctrl+Shift+Z" for a keyboard event (layout-independent for letters, digits and brackets). */
+export function comboOf(e: KeyboardEvent): string {
+  let key: string
+  if (e.code.startsWith('Key')) key = e.code.slice(3)
+  else if (e.code.startsWith('Digit')) key = e.code.slice(5)
+  else if (e.code.startsWith('Numpad') && /\d$/.test(e.code)) key = e.code.slice(-1)
+  else key = CODE_KEYS[e.code] ?? (e.key.length === 1 ? e.key.toUpperCase() : e.key)
+  return [e.ctrlKey || e.metaKey ? 'Ctrl' : '', e.altKey ? 'Alt' : '', e.shiftKey ? 'Shift' : '', key].filter(Boolean).join('+')
+}
+
+let keymap: Map<string, string> | null = null
+
+function buildKeymap(): Map<string, string> {
+  const m = new Map<string, string>()
+  for (const c of COMMANDS) for (const k of c.keys ?? []) m.set(k, c.id)
+  return m
+}
+
+function isTyping(t: EventTarget | null): boolean {
+  const el = t as HTMLElement | null
+  if (!el) return false
+  if (el.isContentEditable) return true
+  const tag = el.tagName
+  if (tag === 'TEXTAREA' || tag === 'SELECT') return true
+  if (tag === 'INPUT') {
+    const type = (el as HTMLInputElement).type
+    return !['checkbox', 'radio', 'range', 'button'].includes(type)
+  }
+  return false
+}
+
+/** Global key handler; returns true when a command ran. */
+export function handleKeydown(e: KeyboardEvent): boolean {
+  if (get().dialog) return false
+  if (isTyping(e.target)) return false
+  keymap ??= buildKeymap()
+  const id = keymap.get(comboOf(e))
+  if (!id) return false
+  const c = byId.get(id)!
+  e.preventDefault()
+  if (c.enabled?.() ?? true) c.run()
+  return true
+}

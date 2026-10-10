@@ -1,0 +1,42 @@
+/** The typed `window.cadencePlus` API exposed by the preload script. */
+
+/** Image formats Chromium decodes natively (8-bit). PSD/TIFF/RAW need libraries later. */
+export const IMAGE_EXTENSIONS = ['png', 'jpg', 'jpeg', 'webp', 'avif', 'gif', 'bmp']
+
+export interface CadencePlusApi {
+  platform: string
+  versions: { app: string; electron: string; chrome: string }
+  isTest: boolean
+
+  /** Shows the Open dialog (documents and images); returns chosen paths. */
+  openDialog(): Promise<string[]>
+  /** Save dialog for a .cadenceimg document. */
+  saveDocumentDialog(defaultName: string): Promise<string | null>
+  /** Save dialog for an exported image. */
+  exportDialog(defaultName: string, ext: string): Promise<string | null>
+  readFile(path: string): Promise<Uint8Array>
+  /** Writes via a temp file + rename; `backup` keeps the previous version as .bak. */
+  writeFile(path: string, data: Uint8Array, backup?: boolean): Promise<void>
+  /** Absolute path for a File dropped from Explorer. */
+  pathForFile(file: File): string
+  showInFolder(path: string): void
+
+  clipboardWriteImage(png: Uint8Array): Promise<void>
+  /** PNG bytes of the clipboard image, or null if it holds none. */
+  clipboardReadImage(): Promise<Uint8Array | null>
+
+  getSettings(): Promise<Record<string, unknown>>
+  setSetting(key: string, value: unknown): Promise<void>
+  /** Moves `path` to the top of the recent-files list and returns the list. */
+  addRecent(path: string): Promise<string[]>
+
+  /** Updates the native window title (taskbar). */
+  setTitle(title: string): void
+  /** Tells main whether there are unsaved changes (close confirmation). */
+  setDirty(dirty: boolean): void
+  /** Main asks the renderer to confirm closing a window with unsaved changes. */
+  onCloseRequested(cb: () => void): () => void
+  confirmClose(): void
+  /** Paths passed on the command line / file association. */
+  onOpenPaths(cb: (paths: string[]) => void): () => void
+}
