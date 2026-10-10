@@ -116,6 +116,63 @@ export function PropertiesPanel() {
               })()}
           </div>
         )}
+        {l && (
+          <div className="prop-section">
+            <div className="prop-head">
+              Layer Mask
+              {l.mask && doc.target === 'mask' && <span className="note" style={{ fontWeight: 400 }}>— editing</span>}
+            </div>
+            {l.mask ? (
+              <>
+                <div className="prop-row">
+                  <label>Enabled</label>
+                  <div className="ctrl">
+                    <input type="checkbox" checked={l.mask.enabled} onChange={(e) => A.setMaskEnabled(l.id, e.target.checked)} />
+                  </div>
+                </div>
+                <div className="prop-row">
+                  <label>Edit</label>
+                  <div className="ctrl">
+                    <span className="seg">
+                      <button className={doc.target !== 'mask' ? 'active' : ''} onClick={() => A.selectLayer(l.id, 'pixels')}>
+                        Pixels
+                      </button>
+                      <button className={doc.target === 'mask' ? 'active' : ''} onClick={() => A.selectLayer(l.id, 'mask')}>
+                        Mask
+                      </button>
+                    </span>
+                  </div>
+                </div>
+                <div className="prop-row">
+                  <label />
+                  <div className="ctrl" style={{ flexWrap: 'wrap' }}>
+                    <button className="btn small" onClick={() => (A.selectLayer(l.id, 'mask'), A.invertTarget())}>
+                      Invert
+                    </button>
+                    <button className="btn small" onClick={() => A.maskToSelection(l.id)}>
+                      Select
+                    </button>
+                    <button className="btn small" disabled={l.content.type !== 'raster'} onClick={() => A.applyLayerMask(l.id)}>
+                      Apply
+                    </button>
+                    <button className="btn small" onClick={() => A.deleteLayerMask(l.id)}>
+                      Delete
+                    </button>
+                  </div>
+                </div>
+              </>
+            ) : (
+              <div className="prop-row">
+                <label />
+                <div className="ctrl">
+                  <button className="btn small" disabled={l.locked} onClick={() => A.addLayerMask()}>
+                    {doc.selection ? 'Add Mask from Selection' : 'Add Mask'}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
         <div className="prop-section">
           <div className="prop-head">Document</div>
           <div className="prop-row">

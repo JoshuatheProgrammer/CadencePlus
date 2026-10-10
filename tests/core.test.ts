@@ -5,7 +5,7 @@ import * as E from '../src/core/edit'
 import { colorMask, maskBounds } from '../src/core/flood'
 import { FormatError, packProject, unpackProject } from '../src/core/format'
 import { apply, createHistory, jumpTo, redo, replace, undo } from '../src/core/history'
-import { createDocument, rasterBounds, TILE, type ImageDocument } from '../src/core/model'
+import { collectTileIds, createDocument, rasterBounds, TILE, type ImageDocument } from '../src/core/model'
 import { combine, dragRect, invert, selectAll, translate } from '../src/core/selection'
 import { clampZoom, docToScreen, fitView, formatZoom, nextZoomStep, screenToDoc, zoomAt } from '../src/core/view'
 
@@ -119,8 +119,8 @@ describe('layer edits', () => {
   })
 
   it('raster bounds follow tile keys and offset', () => {
-    expect(rasterBounds({ type: 'raster', x: 10, y: 0, tiles: { '0,0': 'a', '2,1': 'b' } })).toEqual({ x: 10, y: 0, w: 3 * TILE, h: 2 * TILE })
-    expect(rasterBounds({ type: 'raster', x: 0, y: 0, tiles: {} })).toBeNull()
+    expect(rasterBounds({ x: 10, y: 0, tiles: { '0,0': 'a', '2,1': 'b' } })).toEqual({ x: 10, y: 0, w: 3 * TILE, h: 2 * TILE })
+    expect(rasterBounds({ x: 0, y: 0, tiles: {} })).toBeNull()
   })
 })
 
@@ -244,5 +244,41 @@ describe('file format', () => {
     new DataView(b2.buffer).setUint32(8, enc.length, true)
     b2.set(enc, 12)
     expect(() => unpackProject(b2)).toThrow(/newer version/)
+  })
+})
+
+describe('layer masks', () => {
+  it('adds, targets, moves with the layer and deletes', () => {
+    const d = doc()
+    const id = d.layers[0].id
+    E.addMask(d, id, { '0,0': 'm1' })
+    expect(d.target).toBe('mask')
+    expect(E.paintSurface(d, 'paint').kind).toBe('mask')
+    E.setLayerPosition(d, id, 10, 5)
+    expect([d.layers[0].mask!.x, d.layers[0].mask!.y]).toEqual([10, 5])
+    E.cropDocument(d, { x: 2, y: 1, w: 100, h: 100 })
+    expect([d.layers[0].mask!.x, d.layers[0].mask!.y]).toEqual([8, 4])
+    E.setTarget(d, 'pixels')
+    expect(E.paintSurface(d, 'paint').kind).toBe('pixels')
+    E.deleteMask(d, id)
+    expect(d.layers[0].mask).toBeNull()
+    expect(d.target).toBe('pixels')
+  })
+
+  it('refuses a second mask and applying on non-pixel layers', () => {
+    const d = doc()
+    E.addLayer(d, { type: 'fill', color: '#fff' }, 'Fill')
+    const id = d.activeLayerId!
+    E.addMask(d, id)
+    expect(() => E.addMask(d, id)).toThrow(/already has a mask/)
+    expect(() => E.applyMask(d, id, {})).toThrow(/Only pixel layers/)
+  })
+
+  it('mask tiles are collected for saving and GC', () => {
+    const d = doc()
+    E.addMask(d, d.layers[0].id, { '0,0': 'mask-tile' })
+    const ids = new Set<string>()
+    collectTileIds(d, ids)
+    expect(ids.has('mask-tile')).toBe(true)
   })
 })

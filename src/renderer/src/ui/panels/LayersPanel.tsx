@@ -4,10 +4,10 @@ import { BLEND_MODES, type ImageDocument, type Layer } from '@core/model'
 import { renderDocument } from '../../engine/render'
 import { poolCanvas } from '../../engine/tiles'
 import * as A from '../../state/image-actions'
-import { activeDoc, useEditor } from '../../state/store'
+import { activeDoc, set, useEditor } from '../../state/store'
 import { keysFor } from '../../state/commands'
 import { ScrubNumber, showContextMenu } from '../components'
-import { IconEye, IconEyeOff, IconFx, IconLock, IconNewLayer, IconTrash, IconUnlock, IconFillLayer } from '../icons'
+import { IconEye, IconEyeOff, IconFx, IconLock, IconMask, IconNewLayer, IconTrash, IconUnlock, IconFillLayer } from '../icons'
 import { checkerTile } from '../tokens'
 
 const THUMB = 34
@@ -44,7 +44,33 @@ export const LayerThumb = memo(function LayerThumb({ doc, layer }: { doc: ImageD
   return <canvas ref={ref} className="layer-thumb" style={{ width: THUMB, height: THUMB }} />
 }, (a, b) => a.layer.content === b.layer.content && a.layer.id === b.layer.id && a.doc.width === b.doc.width && a.doc.height === b.doc.height)
 
+/** Mask thumbnail: white = visible, black = hidden. */
+const MaskThumb = memo(function MaskThumb({ doc, layer }: { doc: ImageDocument; layer: Layer }) {
+  const ref = useRef<HTMLCanvasElement>(null)
+  useEffect(() => {
+    const c = ref.current
+    if (!c || !layer.mask) return
+    const dpr = window.devicePixelRatio || 1
+    const S = Math.round(THUMB * dpr)
+    c.width = c.height = S
+    const g = c.getContext('2d')!
+    g.fillStyle = '#2a2d33'
+    g.fillRect(0, 0, S, S)
+    const scale = Math.min(S / doc.width, S / doc.height)
+    const w = Math.max(1, Math.round(doc.width * scale))
+    const h = Math.max(1, Math.round(doc.height * scale))
+    const ox = Math.round((S - w) / 2)
+    const oy = Math.round((S - h) / 2)
+    const tmp = poolCanvas('thumb.mask', S, S)
+    renderDocument(tmp, doc, { xf: { scale, ox, oy }, width: S, height: S, maskView: layer.id })
+    g.drawImage(tmp, 0, 0)
+  }, [layer.id, layer.mask, doc.width, doc.height, doc])
+  return <canvas ref={ref} className="layer-thumb" style={{ width: THUMB, height: THUMB }} />
+}, (a, b) => a.layer.mask === b.layer.mask && a.layer.id === b.layer.id && a.doc.width === b.doc.width && a.doc.height === b.doc.height)
+
 function LayerRow({ doc, layer, active, onDragStart, renaming, setRenaming }: { doc: ImageDocument; layer: Layer; active: boolean; onDragStart: (e: React.PointerEvent, id: string) => void; renaming: boolean; setRenaming: (id: string | null) => void }) {
+  const maskView = useEditor((s) => s.maskView)
+  const onMask = active && doc.target === 'mask' && !!layer.mask
   const [name, setName] = useState(layer.name)
   useEffect(() => setName(layer.name), [layer.name])
   const kind = layer.content.type === 'fill' ? 'Fill layer' : layer.content.type === 'adjustment' ? 'Adjustment layer' : 'Pixel layer'
@@ -55,7 +81,9 @@ function LayerRow({ doc, layer, active, onDragStart, renaming, setRenaming }: { 
       onPointerDown={(e) => {
         if (e.button !== 0 || renaming) return
         if ((e.target as HTMLElement).closest('button')) return
-        A.selectLayer(layer.id)
+        // Clicking the mask thumbnail targets the mask; anywhere else targets the pixels.
+        const toMask = !!(e.target as HTMLElement).closest('.mask-thumb')
+        if (!toMask || !(e.shiftKey || e.altKey || e.ctrlKey)) A.selectLayer(layer.id, toMask ? 'mask' : 'pixels')
         onDragStart(e, layer.id)
       }}
       onDoubleClick={(e) => {
@@ -70,6 +98,19 @@ function LayerRow({ doc, layer, active, onDragStart, renaming, setRenaming }: { 
           { sep: true },
           { label: 'Select Pixels', action: () => A.selectLayerPixels(layer.id), disabled: layer.content.type === 'adjustment' },
           { label: 'Rasterize Layer', action: A.rasterizeActive, disabled: layer.content.type !== 'fill' },
+          { sep: true },
+          ...(layer.mask
+            ? [
+                { label: layer.mask.enabled ? 'Disable Layer Mask' : 'Enable Layer Mask', action: () => A.setMaskEnabled(layer.id, !layer.mask!.enabled) },
+                { label: 'Apply Layer Mask', action: () => A.applyLayerMask(layer.id), disabled: layer.content.type !== 'raster' },
+                { label: 'Delete Layer Mask', action: () => A.deleteLayerMask(layer.id) },
+                { label: 'Add Mask to Selection', action: () => A.maskToSelection(layer.id) }
+              ]
+            : [
+                { label: 'Add Layer Mask (Reveal All)', action: () => A.addLayerMask('revealAll') },
+                { label: 'Add Layer Mask (Hide All)', action: () => A.addLayerMask('hideAll') },
+                { label: 'Add Layer Mask (Reveal Selection)', action: () => A.addLayerMask('revealSelection'), disabled: !doc.selection }
+              ]),
           { sep: true },
           { label: 'Merge Down', action: A.mergeDown, kbd: keysFor('layer.mergeDown')[0], disabled: doc.layers[0].id === layer.id },
           { label: 'Merge Visible', action: A.mergeVisible, kbd: keysFor('layer.mergeVisible')[0] },
@@ -90,8 +131,32 @@ function LayerRow({ doc, layer, active, onDragStart, renaming, setRenaming }: { 
         }}
         title="Ctrl+click to select this layer's pixels"
       >
-        <LayerThumb doc={doc} layer={layer} />
+        <span className={`thumb-wrap${active && !onMask ? ' targeted' : ''}`}>
+          <LayerThumb doc={doc} layer={layer} />
+        </span>
       </span>
+      {layer.mask && (
+        <span
+          className={`thumb-wrap mask-thumb${onMask ? ' targeted' : ''}${layer.mask.enabled ? '' : ' disabled'}${maskView === layer.id ? ' viewing' : ''}`}
+          title={'Layer mask — click to edit it\nShift+click: enable/disable · Alt+click: view mask · Ctrl+click: load as selection'}
+          onPointerDown={(e) => {
+            if (e.button !== 0) return
+            if (e.shiftKey) {
+              e.stopPropagation()
+              A.setMaskEnabled(layer.id, !layer.mask!.enabled)
+            } else if (e.altKey) {
+              e.stopPropagation()
+              A.selectLayer(layer.id, 'mask')
+              set({ maskView: maskView === layer.id ? null : layer.id })
+            } else if (e.ctrlKey) {
+              e.stopPropagation()
+              A.maskToSelection(layer.id)
+            }
+          }}
+        >
+          <MaskThumb doc={doc} layer={layer} />
+        </span>
+      )}
       <span className="layer-name">
         {renaming ? (
           <input
@@ -235,6 +300,14 @@ export function LayersPanel() {
           }
         >
           <IconFx />
+        </button>
+        <button
+          className="icon-btn"
+          title={active?.mask ? 'This layer already has a mask' : 'Add layer mask (reveals the selection if there is one) · Alt+click: hide all'}
+          disabled={!active || !!active.mask || active.locked}
+          onClick={(e) => A.addLayerMask(e.altKey ? 'hideAll' : doc.selection ? 'revealSelection' : 'revealAll')}
+        >
+          <IconMask />
         </button>
         <button className="icon-btn" title="New fill layer (foreground colour)" onClick={() => A.newFillLayer()}>
           <IconFillLayer />

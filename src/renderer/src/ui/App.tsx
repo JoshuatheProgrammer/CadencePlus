@@ -151,6 +151,20 @@ function menus(): Record<string, MenuEntry[]> {
       },
       { cmd: 'layer.duplicate' },
       { cmd: 'layer.delete' },
+      {
+        label: 'Layer Mask',
+        submenu: () => [
+          { cmd: 'layer.mask.revealAll' },
+          { cmd: 'layer.mask.hideAll' },
+          { cmd: 'layer.mask.revealSelection' },
+          { cmd: 'layer.mask.hideSelection' },
+          { sep: true },
+          { cmd: 'layer.mask.toggle' },
+          { cmd: 'layer.mask.target' },
+          { cmd: 'layer.mask.apply' },
+          { cmd: 'layer.mask.delete' }
+        ]
+      },
       { sep: true },
       { cmd: 'layer.viaCopy' },
       { cmd: 'layer.viaCut' },

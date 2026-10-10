@@ -89,6 +89,7 @@ export async function decodeProject(bytes: Uint8Array): Promise<ImageDocument> {
   await Promise.all([...[...tileIds].map((id) => load(id, false)), ...[...maskIds].map((id) => load(id, true))])
   for (const l of doc.layers) {
     if (l.content.type === 'raster') for (const k of Object.keys(l.content.tiles)) l.content.tiles[k] = remap.get(l.content.tiles[k])!
+    if (l.mask) for (const k of Object.keys(l.mask.tiles)) l.mask.tiles[k] = remap.get(l.mask.tiles[k])!
   }
   if (doc.selection) {
     for (const st of doc.selection.steps) if ('shape' in st && st.shape.kind === 'mask') st.shape.maskId = remap.get(st.shape.maskId)!

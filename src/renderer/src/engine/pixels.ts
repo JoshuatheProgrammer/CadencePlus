@@ -4,13 +4,11 @@
  */
 import { adjustmentFilter, scaleFilter } from '@core/adjustments'
 import { colorMask, maskBounds } from '@core/flood'
-import { intersectRect, rasterBounds, tileKey, TILE, unionRect, type ImageDocument, type Layer, type LayerContent, type Rect, type TileMap } from '@core/model'
+import { intersectRect, rasterBounds, tileKey, TILE, unionRect, type ImageDocument, type Layer, type Rect, type TileMap, type TileSurface } from '@core/model'
 import type { Selection } from '@core/selection'
 import { compositeOp, renderComposite } from './render'
 import { maskFromArray, selectionMask } from './selection'
 import { drawTiles, getTile, makeTile, poolCanvas, rasterToCanvas, tilesFromCanvas, type Ctx2D } from './tiles'
-
-type Raster = Extract<LayerContent, { type: 'raster' }>
 
 /** Draws document content with document point (ox, oy) at the canvas origin. */
 export type Source = (g: Ctx2D, ox: number, oy: number) => void
@@ -42,16 +40,48 @@ function tileEmpty(id: string): boolean {
   return true
 }
 
-export type ApplyMode = 'over' | 'erase' | 'replace'
+export type ApplyMode = 'over' | 'erase' | 'replace' | 'mask'
 
 /**
- * Applies `source` to a raster layer inside `rect` (document pixels), limited
- * to the canvas and the selection:
- *   over    — paint on top (brush, fill, gradient)
- *   erase   — remove alpha (eraser, delete)
- *   replace — swap pixels (filters, adjustments)
+ * Mask painting: the source colour's darkness is the hide amount being
+ * painted (black hides, white reveals), mixed in by the source alpha:
+ * hide' = hide × (1 − a) + (1 − luminance) × a.
  */
-export function applyToLayer(doc: ImageDocument, content: Raster, source: Source, rect: Rect, mode: ApplyMode, opacity = 1, selection: Selection | null = doc.selection): TileMap {
+function maskTile(old: ImageBitmap | undefined, opacity: number): ImageData | null {
+  const sd = stg.getImageData(0, 0, TILE, TILE).data
+  let od: Uint8ClampedArray | null = null
+  if (old) {
+    pg.clearRect(0, 0, TILE, TILE)
+    pg.drawImage(old, 0, 0)
+    od = pg.getImageData(0, 0, TILE, TILE).data
+  }
+  const out = new ImageData(TILE, TILE)
+  const d = out.data
+  let any = false
+  for (let p = 3; p < d.length; p += 4) {
+    const a = (sd[p] / 255) * opacity
+    const o = od ? od[p] : 0
+    let v = o
+    if (a > 0) {
+      const lum = (0.299 * sd[p - 3] + 0.587 * sd[p - 2] + 0.114 * sd[p - 1]) / 255
+      v = o * (1 - a) + 255 * (1 - lum) * a
+    }
+    const iv = Math.round(v)
+    d[p] = iv
+    if (iv) any = true
+  }
+  return any ? out : null
+}
+
+/**
+ * Applies `source` to a tile surface (layer pixels or a mask) inside `rect`
+ * (document pixels), limited to the canvas and the selection:
+ *   over    — paint on top (brush, fill, gradient)
+ *   erase   — remove alpha (eraser, delete; on masks: reveal)
+ *   replace — swap pixels (filters, adjustments)
+ *   mask    — paint a mask with the source's greyscale (see maskTile)
+ */
+export function applyToLayer(doc: ImageDocument, content: TileSurface, source: Source, rect: Rect, mode: ApplyMode, opacity = 1, selection: Selection | null = doc.selection): TileMap {
   const out: TileMap = { ...content.tiles }
   const r = intersectRect(rect, { x: 0, y: 0, w: doc.width, h: doc.height })
   if (!r) return out
@@ -79,6 +109,12 @@ export function applyToLayer(doc: ImageDocument, content: Raster, source: Source
         stg.drawImage(mask, -gx, -gy)
       }
       stg.restore()
+      if (mode === 'mask') {
+        const img = maskTile(old, opacity)
+        if (img) out[key] = makeTile((g) => g.putImageData(img, 0, 0))
+        else delete out[key]
+        continue
+      }
       const id = makeTile((g) => {
         if (old) g.drawImage(old, 0, 0)
         if (mode === 'replace') {
@@ -222,27 +258,107 @@ export function mergeToTiles(doc: ImageDocument, layers: Layer[], background?: s
   }
   for (const l of layers) {
     if (!l.visible) continue
+    const masked = !!l.mask?.enabled
     g.save()
     g.globalAlpha = l.opacity
     g.globalCompositeOperation = compositeOp(l)
-    if (l.content.type === 'raster') drawTiles(g, l.content, -b.x, -b.y)
-    else if (l.content.type === 'fill') {
-      g.fillStyle = l.content.color
-      g.fillRect(-b.x, -b.y, doc.width, doc.height)
-    } else {
+    if (l.content.type === 'adjustment') {
       const copy = poolCanvas('merge.adjust', b.w, b.h)
       copy.getContext('2d')!.drawImage(c, 0, 0)
-      if (l.opacity >= 1 && l.blend === 'normal') g.clearRect(0, 0, b.w, b.h)
-      g.filter = adjustmentFilter(l.content.adjustment)
-      g.drawImage(copy, 0, 0)
+      if (masked) {
+        const fl = poolCanvas('merge.layer', b.w, b.h)
+        const fg = fl.getContext('2d')!
+        fg.filter = adjustmentFilter(l.content.adjustment)
+        fg.drawImage(copy, 0, 0)
+        fg.filter = 'none'
+        fg.globalCompositeOperation = 'destination-out'
+        drawTiles(fg, l.mask!, -b.x, -b.y)
+        g.drawImage(fl, 0, 0)
+      } else {
+        if (l.opacity >= 1 && l.blend === 'normal') g.clearRect(0, 0, b.w, b.h)
+        g.filter = adjustmentFilter(l.content.adjustment)
+        g.drawImage(copy, 0, 0)
+      }
+    } else {
+      // Pixels (or fill), cut by the mask, then composited.
+      const lc = masked ? poolCanvas('merge.layer', b.w, b.h) : null
+      const lg = lc ? lc.getContext('2d')! : g
+      if (l.content.type === 'raster') drawTiles(lg, l.content, -b.x, -b.y)
+      else if (l.content.type === 'fill') {
+        lg.fillStyle = l.content.color
+        lg.fillRect(-b.x, -b.y, doc.width, doc.height)
+      }
+      if (lc) {
+        lg.globalCompositeOperation = 'destination-out'
+        drawTiles(lg, l.mask!, -b.x, -b.y)
+        g.drawImage(lc, 0, 0)
+      }
     }
     g.restore()
   }
   return tilesFromCanvas(c, b.x, b.y, 0, 0)
 }
 
-/** Applies a CSS filter to a raster layer (within the selection). */
-export function filterLayer(doc: ImageDocument, content: Raster, filter: string): TileMap {
+/** Layer pixels with the mask baked in (Apply Mask), on the layer's own tile grid. */
+export function applyMaskTiles(content: TileSurface, mask: TileSurface): TileMap {
+  const src = rasterToCanvas(content, 'applymask')
+  if (!src) return {}
+  const g = src.canvas.getContext('2d')!
+  g.globalCompositeOperation = 'destination-out'
+  drawTiles(g, mask, -src.rect.x, -src.rect.y)
+  g.globalCompositeOperation = 'source-over'
+  return tilesFromCanvas(src.canvas, src.rect.x, src.rect.y, content.x, content.y)
+}
+
+/** Mask tiles hiding everything outside the selection (or inside it, with `hideSelected`). */
+export function maskTilesFromSelection(doc: ImageDocument, hideSelected: boolean): TileMap {
+  const c = poolCanvas('mask.sel', doc.width, doc.height)
+  const g = c.getContext('2d')!
+  const m = doc.selection ? selectionMask(doc.selection, doc.width, doc.height) : null
+  if (hideSelected) {
+    if (m) g.drawImage(m, 0, 0)
+    g.globalCompositeOperation = 'source-in'
+    g.fillStyle = '#000'
+    g.fillRect(0, 0, doc.width, doc.height)
+  } else {
+    g.fillStyle = '#000'
+    g.fillRect(0, 0, doc.width, doc.height)
+    if (m) {
+      g.globalCompositeOperation = 'destination-out'
+      g.drawImage(m, 0, 0)
+    }
+  }
+  g.globalCompositeOperation = 'source-over'
+  return tilesFromCanvas(c, 0, 0, 0, 0)
+}
+
+/** Inverts a mask over the canvas plus any area its tiles cover. */
+export function invertMaskTiles(doc: ImageDocument, mask: TileSurface): TileMap {
+  const b = unionRect({ x: 0, y: 0, w: doc.width, h: doc.height }, rasterBounds(mask))!
+  const c = poolCanvas('mask.invert', b.w, b.h)
+  const g = c.getContext('2d')!
+  g.fillStyle = '#000'
+  g.fillRect(0, 0, b.w, b.h)
+  g.globalCompositeOperation = 'destination-out'
+  drawTiles(g, mask, -b.x, -b.y)
+  g.globalCompositeOperation = 'source-over'
+  return tilesFromCanvas(c, b.x, b.y, mask.x, mask.y)
+}
+
+/** The visible part of a mask (inverse of hide) as a document-sized canvas, for Load Selection. */
+export function maskVisibility(doc: ImageDocument, mask: TileSurface): OffscreenCanvas {
+  const c = poolCanvas('mask.vis', doc.width, doc.height)
+  const g = c.getContext('2d')!
+  g.fillStyle = '#fff'
+  g.fillRect(0, 0, doc.width, doc.height)
+  g.globalCompositeOperation = 'destination-out'
+  drawTiles(g, mask, 0, 0)
+  g.globalCompositeOperation = 'source-over'
+  return c
+}
+
+/** Applies a CSS filter to a tile surface (within the selection). */
+export function filterLayer(doc: ImageDocument, content: TileSurface, filter: string): TileMap {
   const full = rasterToCanvas(content, 'filter.src')
   if (!full) return content.tiles
   const out = poolCanvas('filter.out', full.rect.w, full.rect.h)
@@ -279,19 +395,24 @@ export function copyPixels(doc: ImageDocument, merged: boolean): { canvas: Offsc
 
 export type DocTransform = { kind: 'resize'; width: number; height: number } | { kind: 'rotate'; turns: 1 | 2 | 3 } | { kind: 'flip'; axis: 'h' | 'v' }
 
-export function transformLayers(doc: ImageDocument, t: DocTransform): { width: number; height: number; layers: Record<string, { tiles: TileMap; x: number; y: number }> } {
+export function transformLayers(doc: ImageDocument, t: DocTransform): { width: number; height: number; layers: Record<string, TileSurface>; masks: Record<string, TileSurface> } {
   const W = doc.width
   const H = doc.height
   const size =
     t.kind === 'resize' ? { width: t.width, height: t.height } : t.kind === 'rotate' && t.turns !== 2 ? { width: H, height: W } : { width: W, height: H }
-  const layers: Record<string, { tiles: TileMap; x: number; y: number }> = {}
+  const layers: Record<string, TileSurface> = {}
+  const masks: Record<string, TileSurface> = {}
   for (const l of doc.layers) {
-    if (l.content.type !== 'raster') continue
-    const src = rasterToCanvas(l.content, 'xform.src')
-    if (!src) {
-      layers[l.id] = { tiles: {}, x: 0, y: 0 }
-      continue
-    }
+    if (l.content.type === 'raster') layers[l.id] = transformSurface(l.content, t, W, H)
+    if (l.mask) masks[l.id] = transformSurface(l.mask, t, W, H)
+  }
+  return { ...size, layers, masks }
+}
+
+function transformSurface(surface: TileSurface, t: DocTransform, W: number, H: number): TileSurface {
+  {
+    const src = rasterToCanvas(surface, 'xform.src')
+    if (!src) return { tiles: {}, x: 0, y: 0 }
     const { x, y, w, h } = src.rect
     let nr: Rect
     let draw: (g: OffscreenCanvasRenderingContext2D) => void
@@ -346,7 +467,6 @@ export function transformLayers(doc: ImageDocument, t: DocTransform): { width: n
     g.save()
     draw(g)
     g.restore()
-    layers[l.id] = { tiles: tilesFromCanvas(dst, nr.x, nr.y, 0, 0), x: 0, y: 0 }
+    return { tiles: tilesFromCanvas(dst, nr.x, nr.y, 0, 0), x: 0, y: 0 }
   }
-  return { ...size, layers }
 }

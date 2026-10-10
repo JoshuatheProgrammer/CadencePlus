@@ -114,6 +114,13 @@ export const IconFx = I(
     <path d="M8 2.5a5.5 5.5 0 010 11z" fill="currentColor" />
   </>
 )
+/** Layer mask: a frame with a circle cut-out. */
+export const IconMask = I(
+  <>
+    <rect x="2.5" y="3" width="11" height="10" rx="1" />
+    <circle cx="8" cy="8" r="2.6" />
+  </>
+)
 /** Fill layer: a frame with a solid lower half. */
 export const IconFillLayer = I(
   <>

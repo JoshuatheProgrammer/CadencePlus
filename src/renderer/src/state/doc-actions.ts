@@ -340,5 +340,6 @@ export function titleFor(ds: DocState | null): string {
   if (!ds) return ''
   const doc = ds.history.present
   const layer = doc.layers.find((l) => l.id === doc.activeLayerId)
-  return `${displayName(ds)}${isDirty(ds) ? ' •' : ''} @ ${formatZoom(ds.view?.zoom ?? 1)} (${layer?.name ?? '—'}, RGB/8)`
+  const part = doc.target === 'mask' && layer?.mask ? `${layer.name}, Layer Mask/8` : `${layer?.name ?? '—'}, RGB/8`
+  return `${displayName(ds)}${isDirty(ds) ? ' •' : ''} @ ${formatZoom(ds.view?.zoom ?? 1)} (${part})`
 }

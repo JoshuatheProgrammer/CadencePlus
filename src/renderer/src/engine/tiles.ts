@@ -3,7 +3,7 @@
  * are immutable ImageBitmaps of any size. The document model references both
  * by id, so undo snapshots share pixels instead of copying them.
  */
-import { parseTileKey, rasterBounds, tileKey, TILE, type LayerContent, type Rect, type TileMap } from '@core/model'
+import { parseTileKey, rasterBounds, tileKey, TILE, type Rect, type TileMap, type TileSurface } from '@core/model'
 
 export type Ctx2D = OffscreenCanvasRenderingContext2D | CanvasRenderingContext2D
 
@@ -81,7 +81,8 @@ export function poolCanvas(key: string, w: number, h: number): OffscreenCanvas {
     c.width = w
     c.height = h
   } else {
-    c.getContext('2d')!.clearRect(0, 0, w, h)
+    // reset() clears the pixels and every piece of state (composite op, filter, transform, clip).
+    c.getContext('2d')!.reset()
   }
   return c
 }
@@ -131,7 +132,7 @@ export function tilesFromCanvas(src: CanvasImageSource & { width: number; height
 }
 
 /** Draws a raster layer's tiles at 1:1 into `ctx`, with document (0,0) at (dx, dy). */
-export function drawTiles(ctx: Ctx2D, content: Extract<LayerContent, { type: 'raster' }>, dx: number, dy: number): void {
+export function drawTiles(ctx: Ctx2D, content: TileSurface, dx: number, dy: number): void {
   for (const [k, id] of Object.entries(content.tiles)) {
     const bmp = tiles.get(id)
     if (!bmp) continue
@@ -141,7 +142,7 @@ export function drawTiles(ctx: Ctx2D, content: Extract<LayerContent, { type: 'ra
 }
 
 /** A raster layer's pixels as one canvas covering its tile bounds (null if empty). */
-export function rasterToCanvas(content: Extract<LayerContent, { type: 'raster' }>, key = 'raster'): { canvas: OffscreenCanvas; rect: Rect } | null {
+export function rasterToCanvas(content: TileSurface, key = 'raster'): { canvas: OffscreenCanvas; rect: Rect } | null {
   const r = rasterBounds(content)
   if (!r) return null
   const c = poolCanvas(key, r.w, r.h)

@@ -73,6 +73,22 @@ export type LayerContent =
   /** Non-destructive adjustment applied to everything below. */
   | { type: 'adjustment'; adjustment: Adjustment }
 
+/** Pixels addressed by tiles from an origin; shared by raster content and masks. */
+export interface TileSurface {
+  x: number
+  y: number
+  tiles: TileMap
+}
+
+/**
+ * A layer mask. Tiles hold how much of the layer is hidden, in alpha
+ * (0 = visible, 255 = hidden); missing tiles are fully visible. The mask
+ * moves with its layer.
+ */
+export interface LayerMask extends TileSurface {
+  enabled: boolean
+}
+
 export interface Layer {
   id: string
   name: string
@@ -83,6 +99,7 @@ export interface Layer {
   opacity: number
   blend: BlendMode
   content: LayerContent
+  mask?: LayerMask | null
 }
 
 export interface ImageDocument {
@@ -96,6 +113,8 @@ export interface ImageDocument {
   layers: Layer[]
   activeLayerId: string | null
   selection: Selection | null
+  /** Which part of the active layer edits go to (missing = pixels). */
+  target?: 'pixels' | 'mask'
 }
 
 export interface Rect {
@@ -146,8 +165,8 @@ export function activeLayer(doc: ImageDocument): Layer | undefined {
   return findLayer(doc, doc.activeLayerId)
 }
 
-/** Document-space bounds of a raster layer's tiles (null when empty). */
-export function rasterBounds(content: Extract<LayerContent, { type: 'raster' }>): Rect | null {
+/** Document-space bounds of a surface's tiles (null when empty). */
+export function rasterBounds(content: TileSurface): Rect | null {
   let x0 = Infinity
   let y0 = Infinity
   let x1 = -Infinity
@@ -188,5 +207,8 @@ export function roundOut(r: Rect): Rect {
 
 /** Every tile id referenced by a document (for the tile garbage collector). */
 export function collectTileIds(doc: ImageDocument, out: Set<string>): void {
-  for (const l of doc.layers) if (l.content.type === 'raster') for (const id of Object.values(l.content.tiles)) out.add(id)
+  for (const l of doc.layers) {
+    if (l.content.type === 'raster') for (const id of Object.values(l.content.tiles)) out.add(id)
+    if (l.mask) for (const id of Object.values(l.mask.tiles)) out.add(id)
+  }
 }

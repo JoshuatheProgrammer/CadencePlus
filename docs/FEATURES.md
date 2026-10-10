@@ -7,7 +7,7 @@ Status legend:
 - 📋 **Planned**: not in the interface yet, or shown disabled with an explanation.
 
 Last verified: 2026-10-10 on Windows 11, Electron 44.7.
-Suites: 27 unit (`npm test`) · 32 end-to-end (`npm run e2e`), all passing.
+Suites: 30 unit (`npm test`) · 38 end-to-end (`npm run e2e`), all passing.
 
 ## Phase 1: core image-editing workflow
 
@@ -32,7 +32,7 @@ Suites: 27 unit (`npm test`) · 32 end-to-end (`npm run e2e`), all passing.
 | `.cadenceimg` document format | ✅ | Versioned header + PNG tiles. Save/reopen is pixel-identical with layers, blend modes, opacity, fill and adjustment layers, and the selection. Atomic writes with a `.bak`. Newer formats are refused with a clear message. |
 | Export PNG / JPEG / WebP | ✅ | PNG export matches the composite exactly. JPEG gets a white matte. Size estimate shown before export. |
 | Unsaved-changes prompt (close document, close window) | 🟡 | Implemented. The window-close path is not covered by an automated test. |
-| Autosave and crash recovery | 📋 | Cadence's pattern (60 s + on blur, recovery on start) is the plan. |
+| Autosave and crash recovery | ✅ | Every 60 s and on window blur, unsaved documents are copied to the recovery folder (never over your file). Copies are removed on save, close or discard; leftovers are offered at start-up and reopen as unsaved. Tested by killing the process tree and relaunching. |
 | Colour management (ICC, Display P3, soft-proofing), 16-bit/float | 📋 | Pixels are 8-bit and treated as sRGB; the Properties panel says so. |
 
 ### Viewing
@@ -57,7 +57,8 @@ Suites: 27 unit (`npm test`) · 32 end-to-end (`npm run e2e`), all passing.
 | Merge Down, Merge Visible, Flatten | ✅ | Composite preserved (tested). Like Photoshop, Merge Down bakes the upper layer's blend mode against the lower layer only. Flatten fills transparency with white and drops hidden layers. |
 | New Layer via Copy / Cut (Ctrl+J / Ctrl+Shift+J) | ✅ | |
 | Ctrl+click thumbnail to select layer pixels | ✅ | |
-| Layer masks, groups, layer styles, smart objects | 📋 | |
+| Layer masks | ✅ | On any layer type, including adjustment layers. Reveal/Hide All, Reveal/Hide Selection. Paint with black/grey/white (grey half-hides, measured), gradient, fill, blur, invert (Ctrl+I). Disable (Shift+click), view (Alt+click), load as selection (Ctrl+click), Ctrl+\ switches mask/pixels, Apply, Delete. The mask moves with its layer and survives save, merge, crop and transforms. The Paint Bucket and colour adjustments refuse masks with an explanation. |
+| Layer groups, layer styles, smart objects | 📋 | |
 
 ### Selections
 | Feature | Status | Notes |

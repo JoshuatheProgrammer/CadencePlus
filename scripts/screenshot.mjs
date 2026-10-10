@@ -63,6 +63,8 @@ await win.evaluate(() => {
   const d = s.docs.find((x) => x.id === s.activeId).history.present
   A.setLayerBlend(d.activeLayerId, 'soft-light')
   A.setLayerOpacity(d.activeLayerId, 0.4)
+  A.addSelectionShape({ kind: 'ellipse', x: 200, y: 150, w: 900, h: 800 }, 'replace', 'Ellipse')
+  A.addLayerMask('revealSelection')
   A.newLayer()
   A.addSelectionShape({ kind: 'ellipse', x: 600, y: 300, w: 700, h: 500 }, 'replace', 'Ellipse')
   set({ tool: 'brush' })

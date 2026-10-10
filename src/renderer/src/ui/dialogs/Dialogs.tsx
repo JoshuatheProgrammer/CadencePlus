@@ -5,7 +5,7 @@ import { exportImage, type ExportFormat } from '../../engine/io'
 import { COMMANDS } from '../../state/commands'
 import { exportAs, formatBytes, newDocument, type BackgroundChoice } from '../../state/doc-actions'
 import * as A from '../../state/image-actions'
-import { activeDoc, get, set, useEditor, type Dialog } from '../../state/store'
+import { activeDoc, get, set, toast, useEditor, type Dialog } from '../../state/store'
 import { Modal, NumberInput, SliderField } from '../components'
 import { Logo, Wordmark } from '../icons'
 
@@ -113,9 +113,13 @@ function AdjustDialog({ kind }: { kind: AdjustmentKind }) {
   const [params, setParams] = useState(defaultAdjustment(kind).params)
   const [preview, setPreview] = useState(true)
   const target = useMemo(() => {
-    const d = activeDoc()
-    return d ? A.paintTarget('apply an adjustment') : null
-  }, [])
+    const t = activeDoc() ? A.paintTarget('apply an adjustment') : null
+    if (t?.kind === 'mask') {
+      toast(`${ADJUSTMENTS[kind].label} changes colours, so it applies to pixels, not masks. Click the layer thumbnail to target its pixels.`, 'warn')
+      return null
+    }
+    return t?.layer ?? null
+  }, [kind])
   const filter = adjustmentFilter({ kind, params })
   useEffect(() => {
     if (!target) return void set({ dialog: null })
@@ -164,7 +168,7 @@ function AdjustDialog({ kind }: { kind: AdjustmentKind }) {
 function BlurDialog() {
   const [radius, setRadius] = useState(4)
   const [preview, setPreview] = useState(true)
-  const target = useMemo(() => A.paintTarget('blur it'), [])
+  const target = useMemo(() => A.paintTarget('blur it')?.layer ?? null, [])
   useEffect(() => {
     if (!target) return void set({ dialog: null })
     set({ filterPreview: preview && radius > 0 ? { layerId: target.id, filter: blurFilter(radius) } : null })

@@ -3,6 +3,7 @@
  * session that follows the drag; commits happen on release as single edits.
  */
 import { activeLayer, type ImageDocument, type Rect } from '@core/model'
+import { hexToRgb } from '@core/color'
 import { dragRect, type SelMode } from '@core/selection'
 import { clampZoom, panBy, zoomAt, type View } from '@core/view'
 import { Stroke } from '../../engine/brush'
@@ -186,17 +187,20 @@ function paint(erase: boolean): Handler {
   return (c, p, e) => {
     const s = get()
     if (!erase && e.altKey) return eyedropper(c, p, e)
-    const l = A.paintTarget(erase ? 'erase' : 'paint on it')
-    if (!l) return null
+    const t = A.paintTarget(erase ? 'erase' : 'paint on it')
+    if (!t) return null
     const o = erase ? s.options.eraser : s.options.brush
     const stroke = new Stroke(c.doc.width, c.doc.height, s.fg, o, erase)
+    const { r, g, b } = hexToRgb(s.fg)
+    // On a mask the brush paints its darkness: black hides, white reveals.
+    const maskValue = 1 - (0.299 * r + 0.587 * g + 0.114 * b) / 255
     const pressure = (ev: PointerEvent) => (ev.pointerType === 'pen' ? ev.pressure : 1)
     const last = lastPaint.get(c.docId)
     if (e.shiftKey && last) {
       stroke.add(last.x, last.y, pressure(e))
       stroke.lineTo(p.x, p.y, pressure(e))
     } else stroke.add(p.x, p.y, pressure(e))
-    const preview = () => set({ stroke: { layerId: l.id, canvas: stroke.canvas, opacity: stroke.opacity, erase, rev: stroke.rev } })
+    const preview = () => set({ stroke: { layerId: t.layer.id, canvas: stroke.canvas, opacity: stroke.opacity, erase, rev: stroke.rev, target: t.kind, maskValue } })
     preview()
     let lastPt = { x: p.x, y: p.y }
     return {

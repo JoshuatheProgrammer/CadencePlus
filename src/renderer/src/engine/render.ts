@@ -8,7 +8,7 @@
  * edges are snapped to whole target pixels so scaled tiles never show seams.
  */
 import { adjustmentFilter, scaleFilter } from '@core/adjustments'
-import { parseTileKey, tileKey, TILE, type ImageDocument, type Layer, type LayerContent } from '@core/model'
+import { parseTileKey, tileKey, TILE, type ImageDocument, type Layer, type TileSurface } from '@core/model'
 import { layerMip, mipLevel } from './mips'
 import { selectionMask } from './selection'
 import { getTile, poolCanvas, type Ctx2D } from './tiles'
@@ -28,6 +28,9 @@ export interface StrokePreview {
   erase: boolean
   /** Generation counter; bump to re-render while the stroke grows. */
   rev: number
+  /** Painting on the layer mask: `maskValue` is the hide amount (0..1) being painted. */
+  target?: 'pixels' | 'mask'
+  maskValue?: number
 }
 
 /** A destructive filter being previewed on one layer (adjustment dialogs). */
@@ -44,9 +47,9 @@ export interface RenderOptions {
   filterPreview?: FilterPreview | null
   /** Render just this layer at full opacity, normal blend (thumbnails, sampling). */
   onlyLayer?: string
+  /** Show this layer's mask as greyscale instead of the image (Alt+click a mask). */
+  maskView?: string | null
 }
-
-type Raster = Extract<LayerContent, { type: 'raster' }>
 
 export function compositeOp(l: Layer): GlobalCompositeOperation {
   return l.blend === 'normal' ? 'source-over' : (l.blend as GlobalCompositeOperation)
@@ -59,7 +62,7 @@ export function docRectOnTarget(doc: { width: number; height: number }, xf: Xf):
   return { x: x0, y: y0, w: Math.max(1, Math.round(xf.ox + doc.width * xf.scale) - x0), h: Math.max(1, Math.round(xf.oy + doc.height * xf.scale) - y0) }
 }
 
-export function drawRaster(ctx: Ctx2D, c: Raster, xf: Xf, W: number, H: number, layerId?: string): void {
+export function drawRaster(ctx: Ctx2D, c: TileSurface, xf: Xf, W: number, H: number, layerId?: string): void {
   const s = xf.scale
   const level = layerId ? mipLevel(s) : 0
   if (level > 0) {
@@ -128,6 +131,40 @@ function drawSelectionMask(ctx: Ctx2D, doc: ImageDocument, xf: Xf): void {
   ctx.restore()
 }
 
+/** Draws the stroke buffer at target scale, limited to the selection. */
+function strokeOnTarget(stroke: StrokePreview, doc: ImageDocument, xf: Xf, W: number, H: number): OffscreenCanvas {
+  const r = docRectOnTarget(doc, xf)
+  const sc = poolCanvas('render.stroke', W, H)
+  const sg = sc.getContext('2d')!
+  sg.imageSmoothingEnabled = xf.scale < 1
+  sg.imageSmoothingQuality = 'low'
+  sg.drawImage(stroke.canvas, r.x, r.y, r.w, r.h)
+  drawSelectionMask(sg, doc, xf)
+  return sc
+}
+
+/** The layer's hide amount (mask alpha) at target scale, including a mask stroke in progress. */
+function hideOnTarget(l: Layer, doc: ImageDocument, xf: Xf, W: number, H: number, stroke: StrokePreview | null): OffscreenCanvas {
+  const hc = poolCanvas('render.hide', W, H)
+  const hg = hc.getContext('2d')!
+  if (l.mask) drawRaster(hg, l.mask, xf, W, H, `${l.id}#mask`)
+  if (stroke) {
+    // hide' = hide × (1 − a) + value × a
+    const sc = strokeOnTarget(stroke, doc, xf, W, H)
+    hg.save()
+    hg.globalAlpha = stroke.opacity
+    hg.globalCompositeOperation = 'destination-out'
+    hg.drawImage(sc, 0, 0)
+    if (!stroke.erase && (stroke.maskValue ?? 1) > 0) {
+      hg.globalAlpha = stroke.opacity * (stroke.maskValue ?? 1)
+      hg.globalCompositeOperation = 'lighter'
+      hg.drawImage(sc, 0, 0)
+    }
+    hg.restore()
+  }
+  return hc
+}
+
 /** Renders `doc` into `target` (cleared first). */
 export function renderDocument(target: OffscreenCanvas | HTMLCanvasElement, doc: ImageDocument, o: RenderOptions): void {
   const W = o.width
@@ -141,12 +178,27 @@ export function renderDocument(target: OffscreenCanvas | HTMLCanvasElement, doc:
   ctx.rect(r.x, r.y, r.w, r.h)
   ctx.clip()
 
+  if (o.maskView) {
+    const ml = doc.layers.find((l) => l.id === o.maskView)
+    if (ml?.mask) {
+      ctx.fillStyle = '#ffffff'
+      ctx.fillRect(r.x, r.y, r.w, r.h)
+      drawRaster(ctx, ml.mask, o.xf, W, H, `${ml.id}#mask`)
+      ctx.restore()
+      return
+    }
+  }
+
   const only = o.onlyLayer ? doc.layers.find((l) => l.id === o.onlyLayer) : null
-  const layers = only ? [{ ...only, visible: true, opacity: 1, blend: 'normal' as const }] : doc.layers
+  const layers = only ? [{ ...only, visible: true, opacity: 1, blend: 'normal' as const, mask: null }] : doc.layers
 
   for (const l of layers) {
     if (!l.visible) continue
     const op = compositeOp(l)
+    const stroke = o.stroke && o.stroke.layerId === l.id ? o.stroke : null
+    const maskStroke = stroke?.target === 'mask' ? stroke : null
+    const pixelStroke = stroke && stroke.target !== 'mask' ? stroke : null
+    const masked = !!l.mask?.enabled
 
     if (l.content.type === 'adjustment') {
       const f = scaleFilter(adjustmentFilter(l.content.adjustment), o.xf.scale)
@@ -154,18 +206,31 @@ export function renderDocument(target: OffscreenCanvas | HTMLCanvasElement, doc:
       const copy = poolCanvas('render.adjust', W, H)
       copy.getContext('2d')!.drawImage(target, 0, 0)
       ctx.save()
-      if (l.opacity >= 1 && op === 'source-over') ctx.clearRect(r.x, r.y, r.w, r.h)
-      ctx.globalAlpha = l.opacity
-      ctx.globalCompositeOperation = op
-      ctx.filter = f
-      ctx.drawImage(copy, 0, 0)
+      if (masked) {
+        // Filtered copy, hidden where the mask hides, laid over the original.
+        const fl = poolCanvas('render.filtered', W, H)
+        const fg = fl.getContext('2d')!
+        fg.filter = f
+        fg.drawImage(copy, 0, 0)
+        fg.filter = 'none'
+        fg.globalCompositeOperation = 'destination-out'
+        fg.drawImage(hideOnTarget(l, doc, o.xf, W, H, maskStroke), 0, 0)
+        ctx.globalAlpha = l.opacity
+        ctx.globalCompositeOperation = op
+        ctx.drawImage(fl, 0, 0)
+      } else {
+        if (l.opacity >= 1 && op === 'source-over') ctx.clearRect(r.x, r.y, r.w, r.h)
+        ctx.globalAlpha = l.opacity
+        ctx.globalCompositeOperation = op
+        ctx.filter = f
+        ctx.drawImage(copy, 0, 0)
+      }
       ctx.restore()
       continue
     }
 
-    const stroke = o.stroke && o.stroke.layerId === l.id ? o.stroke : null
     const fp = o.filterPreview && o.filterPreview.layerId === l.id ? o.filterPreview : null
-    if (!stroke && !fp) {
+    if (!stroke && !fp && !masked) {
       ctx.save()
       ctx.globalAlpha = l.opacity
       ctx.globalCompositeOperation = op
@@ -203,17 +268,20 @@ export function renderDocument(target: OffscreenCanvas | HTMLCanvasElement, doc:
       }
     }
 
-    if (stroke) {
-      const sc = poolCanvas('render.stroke', W, H)
-      const sg = sc.getContext('2d')!
-      sg.imageSmoothingEnabled = o.xf.scale < 1
-      sg.imageSmoothingQuality = 'low'
-      sg.drawImage(stroke.canvas, r.x, r.y, r.w, r.h)
-      drawSelectionMask(sg, doc, o.xf)
+    if (pixelStroke) {
+      const sc = strokeOnTarget(pixelStroke, doc, o.xf, W, H)
       tg.save()
-      tg.globalAlpha = stroke.opacity
-      tg.globalCompositeOperation = stroke.erase ? 'destination-out' : 'source-over'
+      tg.globalAlpha = pixelStroke.opacity
+      tg.globalCompositeOperation = pixelStroke.erase ? 'destination-out' : 'source-over'
       tg.drawImage(sc, 0, 0)
+      tg.restore()
+    }
+
+    if (masked) {
+      const hc = hideOnTarget(l, doc, o.xf, W, H, maskStroke)
+      tg.save()
+      tg.globalCompositeOperation = 'destination-out'
+      tg.drawImage(hc, 0, 0)
       tg.restore()
     }
 

@@ -34,6 +34,7 @@ export function Viewport() {
   const stroke = useEditor((s) => s.stroke)
   const filterPreview = useEditor((s) => s.filterPreview)
   const crop = useEditor((s) => s.crop)
+  const maskView = useEditor((s) => s.maskView)
   const showGrid = useEditor((s) => s.showPixelGrid)
   const zoomOut = useEditor((s) => s.options.zoom.out)
   const brushSize = useEditor((s) => (s.tool === 'brush' ? s.options.brush.size : s.tool === 'eraser' ? s.options.eraser.size : null))
@@ -85,7 +86,7 @@ export function Viewport() {
       ctx.fillStyle = ctx.createPattern(checkerTile(8 * size.dpr), 'repeat')!
       ctx.fillRect(r.x, r.y, r.w, r.h)
       const comp = poolCanvas('view.composite', W, H)
-      renderDocument(comp, doc, { xf, width: W, height: H, stroke, filterPreview })
+      renderDocument(comp, doc, { xf, width: W, height: H, stroke, filterPreview, maskView })
       ctx.drawImage(comp, 0, 0)
       // Pixel grid at high zoom
       if (showGrid && view.zoom >= 8) {
@@ -116,7 +117,7 @@ export function Viewport() {
       ctx.strokeRect(r.x - 0.5, r.y - 0.5, r.w + 1, r.h + 1)
     })
     return () => cancelAnimationFrame(raf)
-  }, [doc, view, size, stroke, stroke?.rev, filterPreview, showGrid])
+  }, [doc, view, size, stroke, stroke?.rev, filterPreview, showGrid, maskView])
 
   // Overlay render (ants animate while a selection exists)
   const frameRef = useRef(0)

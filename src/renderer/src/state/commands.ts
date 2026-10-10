@@ -19,6 +19,24 @@ export interface Command {
 
 const hasDoc = () => !!activeDoc()
 const hasSel = () => !!activeDoc()?.selection
+const activeL = () => {
+  const d = activeDoc()
+  return d?.layers.find((l) => l.id === d.activeLayerId)
+}
+const hasMask = () => !!activeL()?.mask
+const canAddMask = () => {
+  const l = activeL()
+  return !!l && !l.mask && !l.locked
+}
+function toggleMask(): void {
+  const l = activeL()
+  if (l?.mask) A.setMaskEnabled(l.id, !l.mask.enabled)
+}
+function toggleTarget(): void {
+  const d = activeDoc()
+  const l = activeL()
+  if (d && l?.mask) A.selectLayer(l.id, d.target === 'mask' ? 'pixels' : 'mask')
+}
 const canUndo = () => !!activeDocState()?.history.past.length
 const canRedo = () => !!activeDocState()?.history.future.length
 
@@ -55,7 +73,7 @@ export const COMMANDS: Command[] = [
   { id: 'image.hueSaturation', label: 'Hue/Saturation…', keys: ['Ctrl+U'], run: () => set({ dialog: { kind: 'adjust', adjustment: 'hueSaturation' } }), enabled: hasDoc },
   { id: 'image.blackWhite', label: 'Black & White…', keys: ['Ctrl+Alt+Shift+B'], run: () => set({ dialog: { kind: 'adjust', adjustment: 'blackWhite' } }), enabled: hasDoc },
   { id: 'image.sepia', label: 'Sepia Tone…', run: () => set({ dialog: { kind: 'adjust', adjustment: 'sepia' } }), enabled: hasDoc },
-  { id: 'image.invert', label: 'Invert', keys: ['Ctrl+I'], run: () => A.applyFilter('invert(1)', 'Invert'), enabled: hasDoc },
+  { id: 'image.invert', label: 'Invert', keys: ['Ctrl+I'], run: A.invertTarget, enabled: hasDoc },
   { id: 'image.desaturate', label: 'Desaturate', keys: ['Ctrl+Shift+U'], run: () => A.applyFilter('grayscale(1)', 'Desaturate'), enabled: hasDoc },
   { id: 'image.imageSize', label: 'Image Size…', keys: ['Ctrl+Alt+I'], run: () => set({ dialog: { kind: 'imageSize' } }), enabled: hasDoc },
   { id: 'image.canvasSize', label: 'Canvas Size…', keys: ['Ctrl+Alt+C'], run: () => set({ dialog: { kind: 'canvasSize' } }), enabled: hasDoc },
@@ -74,6 +92,14 @@ export const COMMANDS: Command[] = [
   { id: 'layer.adj.blackWhite', label: 'Black & White', run: () => A.newAdjustmentLayer('blackWhite'), enabled: hasDoc },
   { id: 'layer.adj.invert', label: 'Invert', run: () => A.newAdjustmentLayer('invert'), enabled: hasDoc },
   { id: 'layer.adj.sepia', label: 'Sepia Tone', run: () => A.newAdjustmentLayer('sepia'), enabled: hasDoc },
+  { id: 'layer.mask.revealAll', label: 'Reveal All', run: () => A.addLayerMask('revealAll'), enabled: canAddMask },
+  { id: 'layer.mask.hideAll', label: 'Hide All', run: () => A.addLayerMask('hideAll'), enabled: canAddMask },
+  { id: 'layer.mask.revealSelection', label: 'Reveal Selection', run: () => A.addLayerMask('revealSelection'), enabled: () => canAddMask() && hasSel() },
+  { id: 'layer.mask.hideSelection', label: 'Hide Selection', run: () => A.addLayerMask('hideSelection'), enabled: () => canAddMask() && hasSel() },
+  { id: 'layer.mask.delete', label: 'Delete', run: () => A.deleteLayerMask(), enabled: hasMask },
+  { id: 'layer.mask.apply', label: 'Apply', run: () => A.applyLayerMask(), enabled: hasMask },
+  { id: 'layer.mask.toggle', label: 'Disable / Enable', run: toggleMask, enabled: hasMask },
+  { id: 'layer.mask.target', label: 'Edit Mask / Pixels', keys: ['Ctrl+\\'], run: toggleTarget, enabled: hasMask },
   { id: 'layer.duplicate', label: 'Duplicate Layer', run: A.duplicateLayer, enabled: hasDoc },
   { id: 'layer.viaCopy', label: 'New Layer via Copy', keys: ['Ctrl+J'], run: () => A.layerViaCopy(false), enabled: hasDoc },
   { id: 'layer.viaCut', label: 'New Layer via Cut', keys: ['Ctrl+Shift+J'], run: () => A.layerViaCopy(true), enabled: hasSel },

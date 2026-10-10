@@ -9,9 +9,9 @@ import * as S from '@core/selection'
 import type { BrushOptions } from '../engine/brush'
 import type { Stroke } from '../engine/brush'
 import { canvasToPng, decodeImage } from '../engine/io'
-import { applyToLayer, bucketSource, canvasSource, colorSource, copyPixels, filterLayer, layerCanvas, mergeToTiles, sampleColor, transformLayers, wandMask, type DocTransform, type Source } from '../engine/pixels'
+import { applyMaskTiles, applyToLayer, bucketSource, canvasSource, colorSource, copyPixels, filterLayer, invertMaskTiles, layerCanvas, maskTilesFromSelection, maskVisibility, mergeToTiles, sampleColor, transformLayers, wandMask, type DocTransform, type Source } from '../engine/pixels'
 import { maskFromCanvas, selectionBounds } from '../engine/selection'
-import { tilesFromCanvas } from '../engine/tiles'
+import { solidTiles, tilesFromCanvas } from '../engine/tiles'
 import { addDocument, attempt, edit, holdingTiles, silent } from './doc-actions'
 import { activeDoc, get, set, toast } from './store'
 
@@ -35,7 +35,13 @@ function kindLabel(kind: AdjustmentKind): string {
   return { brightnessContrast: 'Brightness/Contrast', hueSaturation: 'Hue/Saturation', blackWhite: 'Black & White', invert: 'Invert', sepia: 'Sepia Tone' }[kind]
 }
 
-export const selectLayer = (id: string) => silent((d) => void (d.activeLayerId = id))
+export const selectLayer = (id: string, target: 'pixels' | 'mask' = 'pixels') => {
+  if (get().maskView && get().maskView !== id) set({ maskView: null })
+  silent((d) => {
+    d.activeLayerId = id
+    d.target = target === 'mask' && d.layers.find((l) => l.id === id)?.mask ? 'mask' : 'pixels'
+  })
+}
 
 export function duplicateLayer(): void {
   const d = doc()
@@ -191,29 +197,35 @@ export function crop(r: Rect): void {
 // Painting & filling
 // ---------------------------------------------------------------------------
 
-/** The active pixel layer, or null after explaining why it can't be painted. */
-export function paintTarget(what = 'paint on it') {
+/**
+ * Where painting goes (the active layer's pixels, or its mask when the mask
+ * is targeted), or null after explaining why nothing can be painted.
+ */
+export function paintTarget(what = 'paint on it'): E.PaintTarget | null {
   const d = doc()
   if (!d) return null
-  return attempt(() => E.rasterTarget(d, what)) ?? null
+  return attempt(() => E.paintSurface(d, what)) ?? null
 }
+
+/** 'over' paints colour on pixels; on masks the colour's darkness is painted instead. */
+const paintMode = (t: E.PaintTarget) => (t.kind === 'mask' ? 'mask' : 'over')
 
 export function commitStroke(stroke: Stroke, label: string): void {
   const d = doc()
-  const l = d && paintTarget()
-  if (!d || !l || !stroke.bounds) return
-  const tiles = applyToLayer(d, l.content, canvasSource(stroke.canvas), stroke.bounds, stroke.erase ? 'erase' : 'over', stroke.opacity)
-  edit(label, (x) => E.setLayerTiles(x, l.id, tiles))
+  const t = d && paintTarget()
+  if (!d || !t || !stroke.bounds) return
+  const tiles = applyToLayer(d, t.surface, canvasSource(stroke.canvas), stroke.bounds, stroke.erase ? 'erase' : paintMode(t), stroke.opacity)
+  edit(label, (x) => E.setSurfaceTiles(x, t.layer.id, t.kind, tiles))
 }
 
 function fillArea(source: Source, mode: 'over' | 'erase', opacity: number, label: string): void {
   const d = doc()
-  const l = d && paintTarget(mode === 'erase' ? 'clear it' : 'fill it')
-  if (!d || !l) return
+  const t = d && paintTarget(mode === 'erase' ? 'clear it' : 'fill it')
+  if (!d || !t) return
   const r = d.selection ? selectionBounds(d.selection, d.width, d.height) : { x: 0, y: 0, w: d.width, h: d.height }
   if (!r) return void toast('The selection is empty.', 'warn')
-  const tiles = applyToLayer(d, l.content, source, r, mode, opacity)
-  edit(label, (x) => E.setLayerTiles(x, l.id, tiles))
+  const tiles = applyToLayer(d, t.surface, source, r, mode === 'erase' ? 'erase' : paintMode(t), opacity)
+  edit(label, (x) => E.setSurfaceTiles(x, t.layer.id, t.kind, tiles))
 }
 
 export const fillWith = (color: string) => fillArea(colorSource(color), 'over', 1, 'Fill')
@@ -221,19 +233,20 @@ export const clearSelected = () => fillArea(colorSource('#000'), 'erase', 1, 'Cl
 
 export function bucketFill(x: number, y: number): void {
   const d = doc()
-  const l = d && paintTarget('fill it')
-  if (!d || !l) return
+  const t = d && paintTarget('fill it')
+  if (!d || !t) return
+  if (t.kind === 'mask') return void toast('The Paint Bucket fills pixels. To fill a mask, select an area and use Edit → Fill.', 'warn')
   const o = get().options.bucket
   const r = bucketSource(d, x, y, o.tolerance, o.contiguous, o.sampleAll, get().fg)
   if (!r) return
-  const tiles = applyToLayer(d, l.content, r.source, r.bounds, 'over', o.opacity / 100)
-  edit('Paint Bucket', (z) => E.setLayerTiles(z, l.id, tiles))
+  const tiles = applyToLayer(d, t.surface, r.source, r.bounds, 'over', o.opacity / 100)
+  edit('Paint Bucket', (z) => E.setSurfaceTiles(z, t.layer.id, t.kind, tiles))
 }
 
 export function gradientFill(x0: number, y0: number, x1: number, y1: number): void {
   const d = doc()
-  const l = d && paintTarget('draw a gradient on it')
-  if (!d || !l) return
+  const t = d && paintTarget('draw a gradient on it')
+  if (!d || !t) return
   const s = get()
   const o = s.options.gradient
   let a = s.fg
@@ -253,8 +266,8 @@ export function gradientFill(x0: number, y0: number, x1: number, y1: number): vo
   }
   const r = d.selection ? selectionBounds(d.selection, d.width, d.height) : { x: 0, y: 0, w: d.width, h: d.height }
   if (!r) return
-  const tiles = applyToLayer(d, l.content, source, r, 'over', o.opacity / 100)
-  edit('Gradient', (z) => E.setLayerTiles(z, l.id, tiles))
+  const tiles = applyToLayer(d, t.surface, source, r, paintMode(t), o.opacity / 100)
+  edit('Gradient', (z) => E.setSurfaceTiles(z, t.layer.id, t.kind, tiles))
 }
 
 export function pickColor(x: number, y: number, toBackground: boolean): void {
@@ -269,19 +282,78 @@ export function pickColor(x: number, y: number, toBackground: boolean): void {
 // Adjustments, filters & image transforms
 // ---------------------------------------------------------------------------
 
+/** Colour adjustments only make sense on pixels; blur also works on masks. */
 export function applyFilter(filter: string, label: string): void {
   const d = doc()
-  const l = d && paintTarget('apply an adjustment')
-  if (!d || !l || filter === 'none') return
-  const tiles = filterLayer(d, l.content, filter)
-  edit(label, (x) => E.setLayerTiles(x, l.id, tiles))
+  const t = d && paintTarget('apply an adjustment')
+  if (!d || !t || filter === 'none') return
+  if (t.kind === 'mask' && !/^blur\(/.test(filter)) return void toast(`${label} changes colours, so it applies to pixels, not masks. Click the layer thumbnail to target its pixels.`, 'warn')
+  const tiles = filterLayer(d, t.surface, filter)
+  edit(label, (x) => E.setSurfaceTiles(x, t.layer.id, t.kind, tiles))
+}
+
+/** Ctrl+I: inverts the targeted mask, or the pixels. */
+export function invertTarget(): void {
+  const d = doc()
+  const t = d && paintTarget('invert it')
+  if (!d || !t) return
+  if (t.kind === 'pixels') return applyFilter('invert(1)', 'Invert')
+  const tiles = invertMaskTiles(d, t.surface)
+  edit('Invert Mask', (x) => E.setSurfaceTiles(x, t.layer.id, 'mask', tiles))
 }
 
 export function transformImage(t: DocTransform, label: string): void {
   const d = doc()
   if (!d) return
   const r = attempt(() => transformLayers(d, t))
-  if (r) edit(label, (x) => E.transformDocument(x, r.width, r.height, r.layers))
+  if (r) edit(label, (x) => E.transformDocument(x, r.width, r.height, r.layers, r.masks))
+}
+
+// ---------------------------------------------------------------------------
+// Layer masks
+// ---------------------------------------------------------------------------
+
+export type MaskKind = 'revealAll' | 'hideAll' | 'revealSelection' | 'hideSelection'
+
+export function addLayerMask(kind: MaskKind = doc()?.selection ? 'revealSelection' : 'revealAll'): void {
+  const d = doc()
+  const l = d && activeLayer(d)
+  if (!d || !l) return
+  if (l.mask) return void toast(`“${l.name}” already has a mask.`, 'warn')
+  if ((kind === 'revealSelection' || kind === 'hideSelection') && !d.selection) return void toast('Make a selection first.', 'warn')
+  const tiles = kind === 'revealAll' ? {} : kind === 'hideAll' ? solidTiles(d.width, d.height, '#000000') : maskTilesFromSelection(d, kind === 'hideSelection')
+  const label = { revealAll: 'Add Layer Mask', hideAll: 'Add Layer Mask (Hide All)', revealSelection: 'Add Layer Mask (Reveal Selection)', hideSelection: 'Add Layer Mask (Hide Selection)' }[kind]
+  edit(label, (x) => {
+    E.addMask(x, l.id, tiles)
+    if (kind === 'revealSelection' || kind === 'hideSelection') x.selection = null
+  })
+}
+
+export function deleteLayerMask(id = doc()?.activeLayerId): void {
+  if (id) edit('Delete Layer Mask', (x) => E.deleteMask(x, id))
+}
+
+export function applyLayerMask(id = doc()?.activeLayerId): void {
+  const d = doc()
+  const l = d?.layers.find((x) => x.id === id)
+  if (!d || !l) return
+  if (!l.mask) return void toast(`“${l.name}” has no mask.`, 'warn')
+  if (l.content.type !== 'raster') return void toast('Only pixel layers can have their mask applied; on other layers the mask stays editable.', 'warn')
+  const tiles = applyMaskTiles(l.content, l.mask)
+  edit('Apply Layer Mask', (x) => E.applyMask(x, l.id, tiles))
+}
+
+export function setMaskEnabled(id: string, enabled: boolean): void {
+  edit(enabled ? 'Enable Layer Mask' : 'Disable Layer Mask', (x) => E.setMaskEnabled(x, id, enabled))
+}
+
+/** Loads the visible part of a layer's mask as the selection. */
+export function maskToSelection(id: string): void {
+  const d = doc()
+  const l = d?.layers.find((x) => x.id === id)
+  if (!d || !l?.mask) return
+  const maskId = maskFromCanvas(maskVisibility(d, l.mask))
+  edit('Load Selection', (x) => E.setSelection(x, { steps: [{ op: 'add', shape: { kind: 'mask', maskId, x: 0, y: 0 } }] }))
 }
 
 export function resizeCanvas(w: number, h: number, ax: number, ay: number): void {

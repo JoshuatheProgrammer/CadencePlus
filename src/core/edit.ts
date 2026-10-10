@@ -4,7 +4,7 @@
  * Pixel-producing edits receive tile maps already built by the renderer.
  */
 import type { Adjustment } from './adjustments'
-import { checkDimensions, createLayer, findLayer, uid, type BlendMode, type ImageDocument, type Layer, type LayerContent, type Rect, type TileMap } from './model'
+import { checkDimensions, createLayer, findLayer, uid, type BlendMode, type ImageDocument, type Layer, type LayerContent, type LayerMask, type Rect, type TileMap, type TileSurface } from './model'
 import { translate, type Selection } from './selection'
 
 export class EditError extends Error {}
@@ -31,6 +31,79 @@ export function rasterTarget(doc: ImageDocument, what: string): Layer & { conten
   return l as Layer & { content: Extract<LayerContent, { type: 'raster' }> }
 }
 
+export type PaintTarget = { layer: Layer; kind: 'pixels' | 'mask'; surface: TileSurface }
+
+/**
+ * Where painting goes: the active layer's mask when it is targeted, else its
+ * pixels (which must be a raster layer). Explains refusals with EditError.
+ */
+export function paintSurface(doc: ImageDocument, what: string): PaintTarget {
+  const l = layer(doc, doc.activeLayerId)
+  if (doc.target === 'mask' && l.mask) {
+    if (l.locked) throw new EditError(`“${l.name}” is locked. Unlock it to ${what}.`)
+    if (!l.visible) throw new EditError(`“${l.name}” is hidden. Show it to ${what}.`)
+    return { layer: l, kind: 'mask', surface: l.mask }
+  }
+  const r = rasterTarget(doc, what)
+  return { layer: r, kind: 'pixels', surface: r.content }
+}
+
+/** Stores new tiles for a paint target. */
+export function setSurfaceTiles(doc: ImageDocument, id: string, kind: 'pixels' | 'mask', tiles: TileMap): void {
+  const l = layer(doc, id)
+  if (kind === 'mask') {
+    if (!l.mask) throw new EditError(`“${l.name}” has no mask.`)
+    l.mask.tiles = tiles
+  } else setLayerTiles(doc, id, tiles)
+}
+
+// ---------------------------------------------------------------------------
+// Masks
+// ---------------------------------------------------------------------------
+
+export function addMask(doc: ImageDocument, id: string, tiles: TileMap = {}): void {
+  const l = unlocked(doc, id, 'add a mask')
+  if (l.mask) throw new EditError(`“${l.name}” already has a mask.`)
+  l.mask = { x: 0, y: 0, tiles, enabled: true }
+  doc.activeLayerId = id
+  doc.target = 'mask'
+}
+
+export function deleteMask(doc: ImageDocument, id: string): void {
+  const l = unlocked(doc, id, 'delete its mask')
+  if (!l.mask) throw new EditError(`“${l.name}” has no mask.`)
+  l.mask = null
+  if (doc.activeLayerId === id) doc.target = 'pixels'
+}
+
+export function setMaskEnabled(doc: ImageDocument, id: string, enabled: boolean): void {
+  const l = layer(doc, id)
+  if (!l.mask) throw new EditError(`“${l.name}” has no mask.`)
+  l.mask.enabled = enabled
+}
+
+/** Bakes the mask into the layer's pixels (tiles computed by the renderer). */
+export function applyMask(doc: ImageDocument, id: string, tiles: TileMap): void {
+  const l = unlocked(doc, id, 'apply its mask')
+  if (!l.mask) throw new EditError(`“${l.name}” has no mask.`)
+  if (l.content.type !== 'raster') throw new EditError('Only pixel layers can have their mask applied; on other layers the mask stays editable.')
+  l.content.tiles = tiles
+  l.mask = null
+  doc.target = 'pixels'
+}
+
+export function setTarget(doc: ImageDocument, target: 'pixels' | 'mask'): void {
+  const l = layer(doc, doc.activeLayerId)
+  doc.target = target === 'mask' && l.mask ? 'mask' : 'pixels'
+}
+
+function shiftMask(m: LayerMask | null | undefined, dx: number, dy: number): void {
+  if (m) {
+    m.x += dx
+    m.y += dy
+  }
+}
+
 export function nextLayerName(doc: ImageDocument, base = 'Layer'): string {
   let n = 1
   const names = new Set(doc.layers.map((l) => l.name))
@@ -42,6 +115,7 @@ function insertAboveActive(doc: ImageDocument, l: Layer): string {
   const at = doc.layers.findIndex((x) => x.id === doc.activeLayerId)
   doc.layers.splice(at < 0 ? doc.layers.length : at + 1, 0, l)
   doc.activeLayerId = l.id
+  doc.target = 'pixels'
   return l.id
 }
 
@@ -63,7 +137,10 @@ export function deleteLayer(doc: ImageDocument, id: string): void {
   if (doc.layers.length === 1) throw new EditError('A document needs at least one layer.')
   const i = doc.layers.indexOf(l)
   doc.layers.splice(i, 1)
-  if (doc.activeLayerId === id) doc.activeLayerId = (doc.layers[i] ?? doc.layers[i - 1]).id
+  if (doc.activeLayerId === id) {
+    doc.activeLayerId = (doc.layers[i] ?? doc.layers[i - 1]).id
+    doc.target = 'pixels'
+  }
 }
 
 export function renameLayer(doc: ImageDocument, id: string, name: string): void {
@@ -104,8 +181,11 @@ export function setAdjustment(doc: ImageDocument, id: string, adjustment: Adjust
 export function setLayerPosition(doc: ImageDocument, id: string, x: number, y: number): void {
   const l = unlocked(doc, id, 'move it')
   if (l.content.type !== 'raster') throw new EditError(`“${l.name}” covers the whole canvas and cannot be moved.`)
-  l.content.x = Math.round(x)
-  l.content.y = Math.round(y)
+  const nx = Math.round(x)
+  const ny = Math.round(y)
+  shiftMask(l.mask, nx - l.content.x, ny - l.content.y)
+  l.content.x = nx
+  l.content.y = ny
 }
 
 /** Replaces a raster layer's tiles (the result of painting, filters, …). */
@@ -179,6 +259,7 @@ export function cropDocument(doc: ImageDocument, r: Rect): void {
       l.content.x -= x
       l.content.y -= y
     }
+    shiftMask(l.mask, -x, -y)
   }
   doc.width = w
   doc.height = h
@@ -201,6 +282,7 @@ export function resizeCanvas(doc: ImageDocument, width: number, height: number, 
       l.content.x += dx
       l.content.y += dy
     }
+    shiftMask(l.mask, dx, dy)
   }
   doc.selection = translate(doc.selection, dx, dy)
   doc.width = w
@@ -211,7 +293,7 @@ export function resizeCanvas(doc: ImageDocument, width: number, height: number, 
  * Applies a whole-document pixel transform (image size, rotate, flip): new
  * dimensions plus new tiles for every raster layer.
  */
-export function transformDocument(doc: ImageDocument, width: number, height: number, layers: Record<string, { tiles: TileMap; x: number; y: number }>): void {
+export function transformDocument(doc: ImageDocument, width: number, height: number, layers: Record<string, TileSurface>, masks: Record<string, TileSurface> = {}): void {
   try {
     checkDimensions(width, height)
   } catch (e) {
@@ -220,6 +302,8 @@ export function transformDocument(doc: ImageDocument, width: number, height: num
   for (const l of doc.layers) {
     const t = layers[l.id]
     if (t && l.content.type === 'raster') l.content = { type: 'raster', x: t.x, y: t.y, tiles: t.tiles }
+    const m = masks[l.id]
+    if (m && l.mask) l.mask = { ...l.mask, x: m.x, y: m.y, tiles: m.tiles }
   }
   doc.width = width
   doc.height = height

@@ -97,6 +97,8 @@ export interface EditorState {
   /** Pending crop rectangle (document pixels). */
   crop: Rect | null
   busy: string | null
+  /** Layer whose mask is shown in place of the image (Alt+click a mask thumbnail). */
+  maskView: string | null
 }
 
 export const DEFAULT_SWATCHES = [
@@ -125,7 +127,8 @@ export const useEditor = create<EditorState>(() => ({
   stroke: null,
   filterPreview: null,
   crop: null,
-  busy: null
+  busy: null,
+  maskView: null
 }))
 
 export const get = useEditor.getState

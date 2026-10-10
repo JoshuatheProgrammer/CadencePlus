@@ -5,10 +5,8 @@
  * tile map changes. Zoomed-out frames then draw one image per layer instead
  * of hundreds of downscaled tiles.
  */
-import { parseTileKey, TILE, type LayerContent, type TileMap } from '@core/model'
+import { parseTileKey, TILE, type TileMap, type TileSurface } from '@core/model'
 import { getTile } from './tiles'
-
-type Raster = Extract<LayerContent, { type: 'raster' }>
 
 export interface MipEntry {
   tiles: TileMap
@@ -84,7 +82,7 @@ function evict(keep: string): void {
 }
 
 /** The layer at `level`, up to date with its tiles (null if empty or too large). */
-export function layerMip(layerId: string, c: Raster, level: number): MipEntry | null {
+export function layerMip(layerId: string, c: TileSurface, level: number): MipEntry | null {
   const key = `${layerId}|${level}`
   let e = cache.get(key)
   if (e && e.tiles === c.tiles) {

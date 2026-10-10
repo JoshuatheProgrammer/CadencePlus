@@ -435,6 +435,86 @@ await check('keyboard: X swaps, D resets colours; [ ] size', async () => {
   expect(s1.fg === '#abcdef' && s2.fg === '#000000' && s2.bg === '#ffffff' && size1 > size0, JSON.stringify({ s1, s2, size0, size1 }))
 })
 
+// ---------------------------------------------------------------- masks
+await check('layer mask: black hides, grey half-hides, white brush reveals', async () => {
+  await newDoc(100, 100)
+  await A('newLayer')
+  await A('fillWith', '#ff0000')
+  await A('addLayerMask', 'revealAll')
+  expect((await doc()).target === 'mask', 'mask not targeted')
+  expect(near(await px(25, 50), [255, 0, 0, 255]), 'reveal all should show the layer')
+  await selectRect(0, 0, 50, 100)
+  await A('fillWith', '#000000')
+  await A('deselect')
+  expect(near(await px(25, 50), [255, 255, 255, 255]) && near(await px(75, 50), [255, 0, 0, 255]), `black did not hide ${await px(25, 50)}`)
+  await selectRect(0, 0, 50, 50)
+  await A('fillWith', '#808080')
+  await A('deselect')
+  const half = await px(25, 25)
+  expect(near(half, [255, 128, 128, 255], 3), `grey ${half}`)
+  // White brush via the mouse reveals
+  await setFg('#ffffff')
+  await win.keyboard.press('b')
+  await ev(() => window.__cadencePlus.set((s) => ({ options: { ...s.options, brush: { ...s.options.brush, size: 16, hardness: 100, opacity: 100, flow: 100 } } })))
+  await drag([[10, 75], [40, 75]])
+  expect(near(await px(25, 75), [255, 0, 0, 255]), `white brush did not reveal ${await px(25, 75)}`)
+  expect(near(await px(25, 90), [255, 255, 255, 255]), 'brush leaked')
+  // Pixels of the layer are untouched by mask painting
+  const l = (await doc()).layers[1]
+  expect(Object.keys(l.content.tiles).length > 0 && l.mask && Object.keys(l.mask.tiles).length > 0, 'pixels or mask tiles missing')
+  return `grey → ${half}`
+})
+
+await check('mask disable, invert (Ctrl+I on mask) and Ctrl+\\ target toggle', async () => {
+  const id = (await doc()).activeLayerId
+  await A('setMaskEnabled', id, false)
+  expect(near(await px(25, 90), [255, 0, 0, 255]), 'disabled mask still hides')
+  await A('setMaskEnabled', id, true)
+  await win.keyboard.press('Control+i')
+  await settle()
+  expect(near(await px(25, 90), [255, 0, 0, 255]) && near(await px(75, 50), [255, 255, 255, 255]), 'invert mask')
+  await win.keyboard.press('Control+Backslash')
+  expect((await doc()).target === 'pixels', 'target toggle')
+  await win.keyboard.press('Control+i')
+  await settle()
+  expect(near(await px(25, 90), [0, 255, 255, 255]), `Ctrl+I on pixels ${await px(25, 90)}`)
+})
+
+await check('apply mask bakes it into pixels without changing the image', async () => {
+  const pts = [[25, 25], [25, 90], [75, 50], [25, 75]]
+  const before = await Promise.all(pts.map(([x, y]) => px(x, y)))
+  await A('applyLayerMask')
+  const d = await doc()
+  expect(!d.layers[1].mask, 'mask still there')
+  const after = await Promise.all(pts.map(([x, y]) => px(x, y)))
+  before.forEach((b, i) => expect(near(b, after[i], 1), `${pts[i]}: ${b} → ${after[i]}`))
+})
+
+await check('mask from selection; moving the layer moves its mask', async () => {
+  await newDoc(100, 100)
+  await A('newLayer')
+  await A('fillWith', '#0000ff')
+  await selectRect(10, 10, 20, 20)
+  await A('addLayerMask', 'revealSelection')
+  expect(!(await doc()).selection, 'selection should be consumed')
+  expect(near(await px(20, 20), [0, 0, 255, 255]) && near(await px(50, 50), [255, 255, 255, 255]), 'reveal selection')
+  await win.keyboard.press('v')
+  await drag([[20, 20], [60, 60]])
+  expect(near(await px(60, 60), [0, 0, 255, 255]) && near(await px(20, 20), [255, 255, 255, 255]), `mask did not move: ${await px(60, 60)} ${await px(20, 20)}`)
+})
+
+await check('adjustment layer mask limits the adjustment', async () => {
+  await newDoc(100, 100)
+  await A('fillWith', '#ff0000')
+  await A('newAdjustmentLayer', 'invert')
+  await selectRect(0, 0, 50, 100)
+  await A('addLayerMask', 'hideSelection')
+  expect(near(await px(25, 50), [255, 0, 0, 255]) && near(await px(75, 50), [0, 255, 255, 255]), `${await px(25, 50)} ${await px(75, 50)}`)
+  // Merge Visible keeps the masked adjustment's result
+  await A('mergeVisible')
+  expect(near(await px(25, 50), [255, 0, 0, 255]) && near(await px(75, 50), [0, 255, 255, 255]), 'merge visible lost the mask')
+})
+
 await check('Ctrl+R toggles rulers without reloading the window', async () => {
   const n = await ev(() => window.__cadencePlus.get().docs.length)
   await win.keyboard.press('Control+r')
@@ -455,6 +535,10 @@ await check('save .cadenceimg and reopen identically', async () => {
   await selectRect(50, 50, 100, 100)
   await A('fillWith', '#ff8800')
   await A('setLayerBlend', (await doc()).activeLayerId, 'screen')
+  await selectRect(100, 100, 30, 30)
+  await A('addLayerMask', 'hideSelection')
+  await A('selectLayer', (await doc()).activeLayerId, 'pixels')
+  await selectRect(5, 5, 40, 40)
   await A('newFillLayer', '#00ff00')
   await A('setLayerOpacity', (await doc()).activeLayerId, 0.25)
   await A('newAdjustmentLayer', 'hueSaturation')
@@ -467,14 +551,14 @@ await check('save .cadenceimg and reopen identically', async () => {
   const ok = await D('save')
   expect(ok, 'save failed')
   expect(existsSync(projectPath), 'file missing')
-  const pts = [[5, 5], [20, 20], [60, 60], [120, 90], [200, 180], [149, 149]]
-  saved = { layers: (await doc()).layers.map((l) => [l.name, l.content.type, l.blend, l.opacity]), pixels: await Promise.all(pts.map(([x, y]) => px(x, y))), pts }
+  const pts = [[5, 5], [20, 20], [60, 60], [120, 90], [200, 180], [149, 149], [110, 110]]
+  saved = { layers: (await doc()).layers.map((l) => [l.name, l.content.type, l.blend, l.opacity, !!l.mask]), pixels: await Promise.all(pts.map(([x, y]) => px(x, y))), pts }
   await closeAllClean()
   await D('openPaths', [projectPath])
   await win.waitForFunction(() => window.__cadencePlus.get().docs.length === 1)
   await settle(300)
   const d = await doc()
-  const layers = d.layers.map((l) => [l.name, l.content.type, l.blend, l.opacity])
+  const layers = d.layers.map((l) => [l.name, l.content.type, l.blend, l.opacity, !!l.mask])
   expect(JSON.stringify(layers) === JSON.stringify(saved.layers), `layers ${JSON.stringify(layers)}`)
   expect(!!d.selection, 'selection lost')
   const pixels = await Promise.all(pts.map(([x, y]) => px(x, y)))
