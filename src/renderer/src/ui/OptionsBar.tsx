@@ -4,8 +4,9 @@ import { actualPixels, fillScreen, fitOnScreen } from '../state/doc-actions'
 import * as A from '../state/image-actions'
 import { set, setToolOption, useEditor, type ToolOptions } from '../state/store'
 import { toolDef } from '../state/tools'
-import { SliderField } from './components'
-import { IconCheck, IconClose } from './icons'
+import { cancelTransform, commitTransform, updateTransform } from '../state/transform-actions'
+import { NumberInput, SliderField } from './components'
+import { IconCheck, IconClose, IconTransform } from './icons'
 
 function Seg<T extends string>({ value, options, onChange }: { value: T; options: { v: T; label: string; title?: string }[]; onChange: (v: T) => void }) {
   return (
@@ -69,7 +70,51 @@ function ViewButtons() {
   )
 }
 
+function TransformOptions() {
+  const t = useEditor((s) => s.transform)!
+  const p = t.params
+  const up = (q: Partial<typeof p>) => updateTransform({ ...p, ...q })
+  const deg = (p.rot * 180) / Math.PI
+  return (
+    <div className="optionsbar">
+      <div className="tool-badge">
+        <IconTransform size={16} />
+        {t.mode === 'move' ? 'Move Selection' : 'Free Transform'}
+      </div>
+      <span className="label">X</span>
+      <NumberInput value={p.cx} decimals={1} width={64} onChange={(v) => up({ cx: v })} />
+      <span className="label">Y</span>
+      <NumberInput value={p.cy} decimals={1} width={64} onChange={(v) => up({ cy: v })} />
+      <span className="sep-v" />
+      <span className="label">W</span>
+      <NumberInput value={p.sx * 100} decimals={1} width={60} onChange={(v) => v !== 0 && up({ sx: v / 100 })} />
+      <span className="unit">%</span>
+      <span className="label">H</span>
+      <NumberInput value={p.sy * 100} decimals={1} width={60} onChange={(v) => v !== 0 && up({ sy: v / 100 })} />
+      <span className="unit">%</span>
+      <span className="sep-v" />
+      <span className="label">Angle</span>
+      <NumberInput value={Math.round(deg * 10) / 10} decimals={1} width={56} onChange={(v) => up({ rot: (v * Math.PI) / 180 })} />
+      <span className="unit">°</span>
+      <span className="sep-v" />
+      <button className="btn small" onClick={cancelTransform} title="Cancel (Esc)">
+        <IconClose size={12} /> Cancel
+      </button>
+      <button className="btn small primary" onClick={commitTransform} title="Commit (Enter)">
+        <IconCheck size={12} /> Commit
+      </button>
+      <span className="hint">Drag handles to scale (Shift frees corner proportions, Alt scales from the centre) · drag inside to move · drag outside to rotate (Shift snaps 15°)</span>
+    </div>
+  )
+}
+
 export function OptionsBar() {
+  const transforming = useEditor((s) => !!s.transform && s.transform.fs.docId === s.activeId)
+  if (transforming) return <TransformOptions />
+  return <ToolOptionsBar />
+}
+
+function ToolOptionsBar() {
   const tool = useEditor((s) => s.tool)
   const o = useEditor((s) => s.options)
   const crop = useEditor((s) => s.crop)

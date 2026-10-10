@@ -9,7 +9,9 @@ import type { ImageDocument, Rect } from '@core/model'
 import type { SelMode } from '@core/selection'
 import type { View } from '@core/view'
 import { DEFAULT_BRUSH, type BrushOptions } from '../engine/brush'
+import type { TransformParams } from '@core/affine'
 import type { FilterPreview, StrokePreview } from '../engine/render'
+import type { FloatState } from '../engine/transform'
 
 export type ToolId = 'move' | 'marquee' | 'lasso' | 'wand' | 'crop' | 'eyedropper' | 'brush' | 'eraser' | 'bucket' | 'gradient' | 'text' | 'shape' | 'hand' | 'zoom'
 
@@ -99,6 +101,8 @@ export interface EditorState {
   busy: string | null
   /** Layer whose mask is shown in place of the image (Alt+click a mask thumbnail). */
   maskView: string | null
+  /** Free Transform / selection move in progress. */
+  transform: { fs: FloatState; params: TransformParams; mode: 'transform' | 'move' } | null
 }
 
 export const DEFAULT_SWATCHES = [
@@ -128,7 +132,8 @@ export const useEditor = create<EditorState>(() => ({
   filterPreview: null,
   crop: null,
   busy: null,
-  maskView: null
+  maskView: null,
+  transform: null
 }))
 
 export const get = useEditor.getState

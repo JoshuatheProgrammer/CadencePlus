@@ -9,7 +9,9 @@
  */
 import { adjustmentFilter, scaleFilter } from '@core/adjustments'
 import { parseTileKey, tileKey, TILE, type ImageDocument, type Layer, type TileSurface } from '@core/model'
+import type { Affine } from '@core/affine'
 import { layerMip, mipLevel } from './mips'
+import { partMatrix, type FloatState } from './transform'
 import { selectionMask } from './selection'
 import { getTile, poolCanvas, type Ctx2D } from './tiles'
 
@@ -49,6 +51,21 @@ export interface RenderOptions {
   onlyLayer?: string
   /** Show this layer's mask as greyscale instead of the image (Alt+click a mask). */
   maskView?: string | null
+  /** Floating pixels being transformed: `m` maps the float's local pixels to the document. */
+  float?: { fs: FloatState; m: Affine } | null
+}
+
+type FloatPreview = NonNullable<RenderOptions['float']>
+
+/** Draws a float canvas through `m` (local → document) onto the target. */
+function drawFloatPart(ctx: Ctx2D, canvas: OffscreenCanvas, m: Affine, xf: Xf): void {
+  const s = xf.scale
+  ctx.save()
+  ctx.setTransform(s * m.a, s * m.b, s * m.c, s * m.d, s * m.e + xf.ox, s * m.f + xf.oy)
+  ctx.imageSmoothingEnabled = true
+  ctx.imageSmoothingQuality = 'low'
+  ctx.drawImage(canvas, 0, 0)
+  ctx.restore()
 }
 
 export function compositeOp(l: Layer): GlobalCompositeOperation {
@@ -144,10 +161,13 @@ function strokeOnTarget(stroke: StrokePreview, doc: ImageDocument, xf: Xf, W: nu
 }
 
 /** The layer's hide amount (mask alpha) at target scale, including a mask stroke in progress. */
-function hideOnTarget(l: Layer, doc: ImageDocument, xf: Xf, W: number, H: number, stroke: StrokePreview | null): OffscreenCanvas {
+function hideOnTarget(l: Layer, doc: ImageDocument, xf: Xf, W: number, H: number, stroke: StrokePreview | null, fl: FloatPreview | null = null): OffscreenCanvas {
   const hc = poolCanvas('render.hide', W, H)
   const hg = hc.getContext('2d')!
-  if (l.mask) drawRaster(hg, l.mask, xf, W, H, `${l.id}#mask`)
+  if (l.mask && fl?.fs.mask) {
+    drawRaster(hg, { x: l.mask.x, y: l.mask.y, tiles: fl.fs.mask.remainder }, xf, W, H, `${l.id}#maskrem`)
+    drawFloatPart(hg, fl.fs.mask.canvas, partMatrix(fl.m, fl.fs.pixels.rect, fl.fs.mask.rect), xf)
+  } else if (l.mask) drawRaster(hg, l.mask, xf, W, H, `${l.id}#mask`)
   if (stroke) {
     // hide' = hide × (1 − a) + value × a
     const sc = strokeOnTarget(stroke, doc, xf, W, H)
@@ -230,7 +250,8 @@ export function renderDocument(target: OffscreenCanvas | HTMLCanvasElement, doc:
     }
 
     const fp = o.filterPreview && o.filterPreview.layerId === l.id ? o.filterPreview : null
-    if (!stroke && !fp && !masked) {
+    const fl = o.float && o.float.fs.layerId === l.id && l.content.type === 'raster' ? o.float : null
+    if (!stroke && !fp && !masked && !fl) {
       ctx.save()
       ctx.globalAlpha = l.opacity
       ctx.globalCompositeOperation = op
@@ -242,7 +263,10 @@ export function renderDocument(target: OffscreenCanvas | HTMLCanvasElement, doc:
     // Layers being edited render through a temporary canvas first.
     const tmp = poolCanvas('render.layer', W, H)
     const tg = tmp.getContext('2d')!
-    drawContent(tg, l, doc, o.xf, W, H)
+    if (fl && l.content.type === 'raster') {
+      drawRaster(tg, { x: l.content.x, y: l.content.y, tiles: fl.fs.pixels.remainder }, o.xf, W, H, `${l.id}#rem`)
+      drawFloatPart(tg, fl.fs.pixels.canvas, fl.m, o.xf)
+    } else drawContent(tg, l, doc, o.xf, W, H)
 
     if (fp) {
       const f = scaleFilter(fp.filter, o.xf.scale)
@@ -278,7 +302,7 @@ export function renderDocument(target: OffscreenCanvas | HTMLCanvasElement, doc:
     }
 
     if (masked) {
-      const hc = hideOnTarget(l, doc, o.xf, W, H, maskStroke)
+      const hc = hideOnTarget(l, doc, o.xf, W, H, maskStroke, fl)
       tg.save()
       tg.globalCompositeOperation = 'destination-out'
       tg.drawImage(hc, 0, 0)

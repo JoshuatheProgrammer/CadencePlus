@@ -7,6 +7,7 @@ import type { ImageDocument, Rect } from '@core/model'
 import type { Selection } from '@core/selection'
 import type { View } from '@core/view'
 import { antsEdges } from '../../engine/selection'
+import { transformGeometry } from './tool-handlers'
 
 export interface OverlayState {
   marquee?: { shape: 'rect' | 'ellipse'; rect: Rect } | null
@@ -38,6 +39,8 @@ export interface OverlayFrame {
   /** Brush/eraser diameter in document pixels, when one of them is active. */
   brushSize: number | null
   antsPhase: number
+  /** Draw the Free Transform box. */
+  transform?: boolean
 }
 
 const toScreen = (f: OverlayFrame, x: number, y: number): [number, number] => [(x - f.view.cx) * f.view.zoom + f.w / 2, (y - f.view.cy) * f.view.zoom + f.h / 2]
@@ -167,7 +170,7 @@ export function drawOverlay(canvas: HTMLCanvasElement, f: OverlayFrame): void {
   ctx.setTransform(1, 0, 0, 1, 0, 0)
   ctx.clearRect(0, 0, W, H)
 
-  drawAnts(ctx, f, W, H)
+  if (!f.transform) drawAnts(ctx, f, W, H)
 
   ctx.save()
   ctx.scale(dpr, dpr)
@@ -274,6 +277,31 @@ export function drawOverlay(canvas: HTMLCanvasElement, f: OverlayFrame): void {
     ctx.fillRect(lx, ly, tw, 18)
     ctx.fillStyle = '#e8ecf2'
     ctx.fillText(label, lx + 6, ly + 13)
+  }
+
+  if (f.transform) {
+    const g = transformGeometry({ view: f.view, w: f.w, h: f.h })
+    if (g) {
+      const p = new Path2D()
+      p.moveTo(g.box[0].x, g.box[0].y)
+      for (const q of g.box.slice(1)) p.lineTo(q.x, q.y)
+      p.closePath()
+      dualStroke(ctx, p, 1)
+      ctx.fillStyle = '#fff'
+      ctx.strokeStyle = 'rgba(0,0,0,0.85)'
+      ctx.lineWidth = 1
+      for (const h of g.handles) {
+        ctx.fillRect(Math.round(h.x) - 3.5, Math.round(h.y) - 3.5, 7, 7)
+        ctx.strokeRect(Math.round(h.x) - 3, Math.round(h.y) - 3, 6, 6)
+      }
+      const cp = new Path2D()
+      cp.arc(g.center.x, g.center.y, 4, 0, Math.PI * 2)
+      cp.moveTo(g.center.x - 7, g.center.y)
+      cp.lineTo(g.center.x + 7, g.center.y)
+      cp.moveTo(g.center.x, g.center.y - 7)
+      cp.lineTo(g.center.x, g.center.y + 7)
+      dualStroke(ctx, cp, 1)
+    }
   }
 
   if (f.brushSize && overlay.pointer) {

@@ -3,6 +3,7 @@
  * session that follows the drag; commits happen on release as single edits.
  */
 import { activeLayer, type ImageDocument, type Rect } from '@core/model'
+import { apply, scaleFromHandle } from '@core/affine'
 import { hexToRgb } from '@core/color'
 import { dragRect, type SelMode } from '@core/selection'
 import { clampZoom, panBy, zoomAt, type View } from '@core/view'
@@ -11,6 +12,7 @@ import { layerAlphaAt } from '../../engine/pixels'
 import { setView } from '../../state/doc-actions'
 import * as A from '../../state/image-actions'
 import { get, set, toast, type ToolId } from '../../state/store'
+import { commitTransform, startTransform, transformMatrix, updateTransform } from '../../state/transform-actions'
 import { cropHandleAt, overlay, requestOverlay, type CropHandle } from './overlay'
 
 export interface Pt {
@@ -65,6 +67,20 @@ export function panSession(c: ToolContext, p: Pt): Session {
 
 const move: Handler = (c, p) => {
   let doc = c.doc
+  // With a selection, the Move tool lifts and moves the selected pixels.
+  if (doc.selection) {
+    if (!startTransform('move')) return null
+    const s = transformSession(c, p, { kind: 'move' })
+    return {
+      move: s.move,
+      up() {
+        commitTransform()
+      },
+      cancel() {
+        commitTransform()
+      }
+    }
+  }
   if (get().options.move.autoSelect) {
     const id = topLayerAt(doc, p.x, p.y)
     if (id && id !== doc.activeLayerId) {
@@ -337,4 +353,102 @@ export const HANDLERS: Partial<Record<ToolId, Handler>> = {
   gradient,
   bucket,
   zoom
+}
+
+// ---------------------------------------------------------------------------
+// Free Transform box
+// ---------------------------------------------------------------------------
+
+export type TransformHit = { kind: 'handle'; hx: number; hy: number } | { kind: 'move' } | { kind: 'rotate' }
+
+const HANDLES: [number, number][] = [
+  [-1, -1], [0, -1], [1, -1],
+  [-1, 0], [1, 0],
+  [-1, 1], [0, 1], [1, 1]
+]
+
+/** Screen positions of the box corners (TL, TR, BR, BL) and the eight handles. */
+export function transformGeometry(c: { view: View; w: number; h: number }) {
+  const t = get().transform
+  if (!t) return null
+  const m = transformMatrix(t)
+  const fw = t.fs.pixels.canvas.width
+  const fh = t.fs.pixels.canvas.height
+  const toScreen = (lx: number, ly: number) => {
+    const d = apply(m, lx, ly)
+    return { x: (d.x - c.view.cx) * c.view.zoom + c.w / 2, y: (d.y - c.view.cy) * c.view.zoom + c.h / 2 }
+  }
+  const box = [toScreen(0, 0), toScreen(fw, 0), toScreen(fw, fh), toScreen(0, fh)]
+  const handles = HANDLES.map(([hx, hy]) => ({ hx, hy, ...toScreen((fw / 2) * (1 + hx), (fh / 2) * (1 + hy)) }))
+  return { box, handles, center: toScreen(fw / 2, fh / 2) }
+}
+
+function inside(pts: { x: number; y: number }[], x: number, y: number): boolean {
+  let s = 0
+  for (let i = 0; i < pts.length; i++) {
+    const a = pts[i]
+    const b = pts[(i + 1) % pts.length]
+    const cross = (b.x - a.x) * (y - a.y) - (b.y - a.y) * (x - a.x)
+    if (cross !== 0) {
+      if (s === 0) s = Math.sign(cross)
+      else if (Math.sign(cross) !== s) return false
+    }
+  }
+  return true
+}
+
+export function transformHitAt(c: { view: View; w: number; h: number }, sx: number, sy: number): TransformHit | null {
+  const g = transformGeometry(c)
+  if (!g) return null
+  for (const h of g.handles) if (Math.abs(h.x - sx) <= 6 && Math.abs(h.y - sy) <= 6) return { kind: 'handle', hx: h.hx, hy: h.hy }
+  return inside(g.box, sx, sy) ? { kind: 'move' } : { kind: 'rotate' }
+}
+
+export function transformSession(c: ToolContext, p: Pt, hit: TransformHit): Session {
+  const t = get().transform!
+  const start = t.params
+  const fw = t.fs.pixels.canvas.width
+  const fh = t.fs.pixels.canvas.height
+  const exactMove = t.mode === 'move'
+  void c
+  if (hit.kind === 'move') {
+    return {
+      move(q, e) {
+        let dx = q.x - p.x
+        let dy = q.y - p.y
+        if (e.shiftKey) Math.abs(dx) > Math.abs(dy) ? (dy = 0) : (dx = 0)
+        if (exactMove) {
+          dx = Math.round(dx)
+          dy = Math.round(dy)
+        }
+        updateTransform({ ...start, cx: start.cx + dx, cy: start.cy + dy })
+      },
+      up() {}
+    }
+  }
+  if (hit.kind === 'rotate') {
+    const a0 = Math.atan2(p.y - start.cy, p.x - start.cx)
+    return {
+      move(q, e) {
+        let rot = start.rot + Math.atan2(q.y - start.cy, q.x - start.cx) - a0
+        if (e.shiftKey) rot = Math.round(rot / (Math.PI / 12)) * (Math.PI / 12)
+        updateTransform({ ...start, rot })
+      },
+      up() {}
+    }
+  }
+  const corner = hit.hx !== 0 && hit.hy !== 0
+  const cos = Math.cos(start.rot)
+  const sin = Math.sin(start.rot)
+  return {
+    move(q, e) {
+      const dx = q.x - start.cx
+      const dy = q.y - start.cy
+      const local = { x: dx * cos + dy * sin, y: -dx * sin + dy * cos }
+      // Corners keep proportions unless Shift is held (as in current Photoshop); edges stretch.
+      const keep = corner ? !e.shiftKey : e.shiftKey
+      updateTransform(scaleFromHandle(start, fw, fh, hit.hx, hit.hy, local, keep, e.altKey))
+    },
+    up() {}
+  }
 }

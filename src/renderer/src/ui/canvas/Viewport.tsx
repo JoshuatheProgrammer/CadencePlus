@@ -8,7 +8,8 @@ import { activeDocState, get, set, useEditor } from '../../state/store'
 import { toolDef } from '../../state/tools'
 import { checkerTile, token } from '../tokens'
 import { drawOverlay, hasAnts, onOverlayRequest, overlay, requestOverlay } from './overlay'
-import { HANDLERS, panSession, setEventMapper, type Pt, type Session, type ToolContext } from './tool-handlers'
+import { HANDLERS, panSession, setEventMapper, transformHitAt, transformSession, type Pt, type Session, type ToolContext } from './tool-handlers'
+import { transformMatrix } from '../../state/transform-actions'
 
 /** The viewport's live geometry, shared with rulers. */
 export const viewportGeom = { w: 0, h: 0, dpr: 1 }
@@ -35,6 +36,8 @@ export function Viewport() {
   const filterPreview = useEditor((s) => s.filterPreview)
   const crop = useEditor((s) => s.crop)
   const maskView = useEditor((s) => s.maskView)
+  const transform = useEditor((s) => (s.transform && s.transform.fs.docId === s.activeId ? s.transform : null))
+  const [tfCursor, setTfCursor] = useState<string | null>(null)
   const showGrid = useEditor((s) => s.showPixelGrid)
   const zoomOut = useEditor((s) => s.options.zoom.out)
   const brushSize = useEditor((s) => (s.tool === 'brush' ? s.options.brush.size : s.tool === 'eraser' ? s.options.eraser.size : null))
@@ -86,7 +89,7 @@ export function Viewport() {
       ctx.fillStyle = ctx.createPattern(checkerTile(8 * size.dpr), 'repeat')!
       ctx.fillRect(r.x, r.y, r.w, r.h)
       const comp = poolCanvas('view.composite', W, H)
-      renderDocument(comp, doc, { xf, width: W, height: H, stroke, filterPreview, maskView })
+      renderDocument(comp, doc, { xf, width: W, height: H, stroke, filterPreview, maskView, float: transform ? { fs: transform.fs, m: transformMatrix(transform) } : null })
       ctx.drawImage(comp, 0, 0)
       // Pixel grid at high zoom
       if (showGrid && view.zoom >= 8) {
@@ -117,7 +120,7 @@ export function Viewport() {
       ctx.strokeRect(r.x - 0.5, r.y - 0.5, r.w + 1, r.h + 1)
     })
     return () => cancelAnimationFrame(raf)
-  }, [doc, view, size, stroke, stroke?.rev, filterPreview, showGrid, maskView])
+  }, [doc, view, size, stroke, stroke?.rev, filterPreview, showGrid, maskView, transform])
 
   // Overlay render (ants animate while a selection exists)
   const frameRef = useRef(0)
@@ -134,7 +137,7 @@ export function Viewport() {
           c.width = W
           c.height = H
         }
-        drawOverlay(c, { doc, view, w: size.w, h: size.h, dpr: size.dpr, crop: tool === 'crop' || crop ? crop : null, brushSize: space ? null : brushSize, antsPhase: phase.current })
+        drawOverlay(c, { doc, view, w: size.w, h: size.h, dpr: size.dpr, crop: tool === 'crop' || crop ? crop : null, brushSize: space || transform ? null : brushSize, antsPhase: phase.current, transform: !!transform })
       })
     }
     onOverlayRequest(draw)
@@ -149,7 +152,7 @@ export function Viewport() {
       clearInterval(timer)
       cancelAnimationFrame(frameRef.current)
     }
-  }, [doc, view, size, crop, tool, brushSize, space])
+  }, [doc, view, size, crop, tool, brushSize, space, transform])
 
   // Clear the pending crop when leaving the Crop tool
   useEffect(() => {
@@ -211,7 +214,9 @@ export function Viewport() {
     wrap.current!.setPointerCapture(e.pointerId)
     const p = toPt(e, c.view)
     let s: Session | null
+    const hit = get().transform && get().transform!.fs.docId === c.docId ? transformHitAt(c, p.sx, p.sy) : null
     if (e.button === 1 || spaceHeld || tool === 'hand') s = panSession(c, p)
+    else if (hit) s = transformSession(c, p, hit)
     else s = HANDLERS[tool]?.(c, p, e.nativeEvent) ?? null
     session.current = s
     setDragging(!!s)
@@ -226,6 +231,11 @@ export function Viewport() {
     const s = get()
     if (!s.cursor || Math.floor(s.cursor.x) !== Math.floor(p.x) || Math.floor(s.cursor.y) !== Math.floor(p.y)) set({ cursor: { x: p.x, y: p.y } })
     session.current?.move(p, e.nativeEvent)
+    if (!session.current && get().transform) {
+      const hit = transformHitAt({ view: d.view, w: size.w, h: size.h }, p.sx, p.sy)
+      const cur = !hit ? null : hit.kind === 'move' ? 'move' : hit.kind === 'rotate' ? 'alias' : hit.hx * hit.hy > 0 ? 'nwse-resize' : hit.hx * hit.hy < 0 ? 'nesw-resize' : hit.hx ? 'ew-resize' : 'ns-resize'
+      if (cur !== tfCursor) setTfCursor(cur)
+    } else if (tfCursor && !get().transform) setTfCursor(null)
   }
 
   const endSession = (e: React.PointerEvent, cancelled = false) => {
@@ -272,7 +282,7 @@ export function Viewport() {
     <div
       ref={wrap}
       className={`viewport ${cursorClass}${dragging ? ' dragging' : ''}${tool === 'zoom' && zoomOut ? ' out' : ''}${dropping ? ' drop-target' : ''}`}
-      style={noCursor ? { cursor: 'none' } : undefined}
+      style={transform && tfCursor ? { cursor: tfCursor } : noCursor && !transform ? { cursor: 'none' } : undefined}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={(e) => endSession(e)}

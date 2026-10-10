@@ -7,7 +7,7 @@ Status legend:
 - 📋 **Planned**: not in the interface yet, or shown disabled with an explanation.
 
 Last verified: 2026-10-10 on Windows 11, Electron 44.7.
-Suites: 30 unit (`npm test`) · 38 end-to-end (`npm run e2e`), all passing.
+Suites: 35 unit (`npm test`) · 44 end-to-end (`npm run e2e`), all passing.
 
 ## Phase 1: core image-editing workflow
 
@@ -80,7 +80,10 @@ Suites: 30 unit (`npm test`) · 38 end-to-end (`npm run e2e`), all passing.
 | Paint bucket | ✅ | Tolerance, contiguous, all layers. |
 | Gradient (linear / radial, reverse, to transparent) | ✅ | Shift snaps to 45°. Midpoint measured 128/255. |
 | Eyedropper (point, 3×3, 5×5, 11×11; all layers or current) | ✅ | Alt+click sets the background colour; Alt with the Brush samples. |
-| Move tool (+ auto-select, arrow-key nudge) | 🟡 | Moves the whole layer. Moving only selected pixels, and Free Transform (scale/rotate), are planned. |
+| Move tool (+ auto-select, arrow-key nudge) | ✅ | Moves the whole layer, or only the selected pixels when there is a selection (the selection follows). Whole-pixel moves are exact. |
+| Free Transform (Ctrl+T) | ✅ | Scale (corners keep proportions; Shift frees them; Alt from the centre), rotate (Shift snaps 15°), move, typed X/Y/W/H/angle. Works on the layer or the selected pixels; a layer mask moves with its layer. Enter commits, Esc cancels; one undo step. |
+| Edit → Transform: Flip, Rotate 90°/180° | ✅ | On the layer or selected pixels. 90° turns and flips are pixel-exact (verified). |
+| Skew, distort, perspective, warp | 📋 | |
 | Crop tool (drag, adjust handles, Enter / Esc / double-click) | ✅ | Pixels outside the canvas stay on their layers. |
 | Fill / Clear selection (Alt+Backspace, Ctrl+Backspace, Delete) | ✅ | |
 | Cut / Copy / Copy Merged / Paste (in place) | ✅ | Uses the system clipboard as PNG. Pasting images copied from other apps depends on them putting PNG on the clipboard; not tested with other apps. |

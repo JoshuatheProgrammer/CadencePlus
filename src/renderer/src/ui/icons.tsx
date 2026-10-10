@@ -114,6 +114,16 @@ export const IconFx = I(
     <path d="M8 2.5a5.5 5.5 0 010 11z" fill="currentColor" />
   </>
 )
+/** Free Transform: a box with corner handles. */
+export const IconTransform = I(
+  <>
+    <rect x="3.5" y="3.5" width="9" height="9" strokeDasharray="2 1.5" />
+    <rect x="1.5" y="1.5" width="3" height="3" fill="currentColor" />
+    <rect x="11.5" y="1.5" width="3" height="3" fill="currentColor" />
+    <rect x="1.5" y="11.5" width="3" height="3" fill="currentColor" />
+    <rect x="11.5" y="11.5" width="3" height="3" fill="currentColor" />
+  </>
+)
 /** Layer mask: a frame with a circle cut-out. */
 export const IconMask = I(
   <>

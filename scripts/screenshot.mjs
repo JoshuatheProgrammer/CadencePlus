@@ -118,5 +118,17 @@ await win.waitForTimeout(300)
 await win.screenshot({ path: join(out, '8-adjust.png') })
 await win.keyboard.press('Escape')
 
+// Free Transform on the painted document
+await win.evaluate(() => window.__cadencePlus.set((s) => ({ activeId: s.docs[1].id })))
+await win.waitForTimeout(300)
+await win.keyboard.press('Control+t')
+await win.evaluate(() => {
+  const t = window.__cadencePlus.get().transform
+  window.__cadencePlus.TF.updateTransform({ ...t.params, rot: 0.35, sx: 0.7, sy: 0.7 })
+})
+await win.waitForTimeout(300)
+await win.screenshot({ path: join(out, '9-transform.png') })
+await win.keyboard.press('Escape')
+
 console.log(JSON.stringify({ errors, stats: await win.evaluate(() => window.__cadencePlus.storeStats()) }, null, 2))
 await app.close()

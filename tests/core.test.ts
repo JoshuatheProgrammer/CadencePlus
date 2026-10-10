@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import * as A from '../src/core/affine'
 import { adjustmentFilter, blurFilter, defaultAdjustment, scaleFilter } from '../src/core/adjustments'
 import { hexToRgb, hsvToRgb, parseHex, rgbToHex, rgbToHsv } from '../src/core/color'
 import * as E from '../src/core/edit'
@@ -280,5 +281,48 @@ describe('layer masks', () => {
     const ids = new Set<string>()
     collectTileIds(d, ids)
     expect(ids.has('mask-tile')).toBe(true)
+  })
+})
+
+describe('affine maths', () => {
+  const close = (a: { x: number; y: number }, b: { x: number; y: number }) => expect(Math.hypot(a.x - b.x, a.y - b.y)).toBeLessThan(1e-9)
+
+  it('params map the content box onto its rect at identity', () => {
+    const r = { x: 10, y: 20, w: 100, h: 50 }
+    const m = A.paramsToMatrix(A.paramsForRect(r), r.w, r.h)
+    close(A.apply(m, 0, 0), { x: 10, y: 20 })
+    close(A.apply(m, 100, 50), { x: 110, y: 70 })
+    expect(A.isIntegerTranslation(m)).toBe(true)
+    expect(A.transformedBounds(m, 100, 50)).toEqual(r)
+  })
+
+  it('rotation by 90° swaps the bounds about the centre', () => {
+    const r = { x: 0, y: 0, w: 100, h: 50 }
+    const m = A.paramsToMatrix({ ...A.paramsForRect(r), rot: Math.PI / 2 }, 100, 50)
+    expect(A.transformedBounds(m, 100, 50)).toEqual({ x: 25, y: -25, w: 50, h: 100 })
+  })
+
+  it('invert and multiply round-trip', () => {
+    const m = A.paramsToMatrix({ cx: 5, cy: 7, sx: 2, sy: -0.5, rot: 0.3 }, 40, 30)
+    const p = A.apply(A.multiply(A.invert(m), m), 12, 34)
+    close(p, { x: 12, y: 34 })
+  })
+
+  it('dragging the right edge keeps the left edge fixed', () => {
+    const r = { x: 0, y: 0, w: 100, h: 50 }
+    const p0 = A.paramsForRect(r)
+    // Pointer 150 px right of the centre → right edge at 200
+    const p = A.scaleFromHandle(p0, 100, 50, 1, 0, { x: 150, y: 0 }, false, false)
+    const m = A.paramsToMatrix(p, 100, 50)
+    close(A.apply(m, 0, 0), { x: 0, y: 0 })
+    close(A.apply(m, 100, 0), { x: 200, y: 0 })
+  })
+
+  it('corner drag with aspect lock scales uniformly; from-centre keeps the centre', () => {
+    const p0 = A.paramsForRect({ x: 0, y: 0, w: 100, h: 50 })
+    const p = A.scaleFromHandle(p0, 100, 50, 1, 1, { x: 100, y: 10 }, true, false)
+    expect(p.sx).toBeCloseTo(p.sy * 1)
+    const c = A.scaleFromHandle(p0, 100, 50, -1, 0, { x: -100, y: 0 }, false, true)
+    expect([c.cx, c.cy, c.sx]).toEqual([50, 25, 2])
   })
 })

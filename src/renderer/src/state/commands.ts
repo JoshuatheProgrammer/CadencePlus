@@ -7,6 +7,7 @@ import * as D from './doc-actions'
 import * as A from './image-actions'
 import { activeDoc, activeDocState, get, set, setToolOption, toast, type PanelId, type ToolId } from './store'
 import { TOOL_LIST } from './tools'
+import * as T from './transform-actions'
 
 export interface Command {
   id: string
@@ -58,7 +59,7 @@ export const COMMANDS: Command[] = [
   { id: 'file.export', label: 'Export As…', keys: ['Ctrl+Alt+Shift+W'], run: () => set({ dialog: { kind: 'export' } }), enabled: hasDoc },
 
   // Edit
-  { id: 'edit.undo', label: 'Undo', keys: ['Ctrl+Z'], run: D.undo, enabled: canUndo },
+  { id: 'edit.undo', label: 'Undo', keys: ['Ctrl+Z'], run: () => (T.transforming() ? T.cancelTransform() : D.undo()), enabled: () => T.transforming() || canUndo() },
   { id: 'edit.redo', label: 'Redo', keys: ['Ctrl+Shift+Z', 'Ctrl+Y'], run: D.redo, enabled: canRedo },
   { id: 'edit.cut', label: 'Cut', keys: ['Ctrl+X'], run: () => void A.copy(false, true), enabled: hasDoc },
   { id: 'edit.copy', label: 'Copy', keys: ['Ctrl+C'], run: () => void A.copy(false), enabled: hasDoc },
@@ -66,6 +67,14 @@ export const COMMANDS: Command[] = [
   { id: 'edit.paste', label: 'Paste', keys: ['Ctrl+V'], run: () => void A.paste() },
   { id: 'edit.clear', label: 'Clear', keys: ['Delete', 'Backspace'], run: A.clearSelected, enabled: hasDoc },
   { id: 'edit.fillFg', label: 'Fill with Foreground Color', keys: ['Alt+Backspace', 'Alt+Delete'], run: () => A.fillWith(get().fg), enabled: hasDoc },
+  { id: 'edit.freeTransform', label: 'Free Transform', keys: ['Ctrl+T'], run: () => void T.startTransform(), enabled: () => hasDoc() && !T.transforming() },
+  { id: 'edit.transform.flipH', label: 'Flip Horizontal', run: () => T.quickTransform('flipH'), enabled: hasDoc },
+  { id: 'edit.transform.flipV', label: 'Flip Vertical', run: () => T.quickTransform('flipV'), enabled: hasDoc },
+  { id: 'edit.transform.rot180', label: 'Rotate 180°', run: () => T.quickTransform('rot180'), enabled: hasDoc },
+  { id: 'edit.transform.rot90', label: 'Rotate 90° Clockwise', run: () => T.quickTransform('rot90'), enabled: hasDoc },
+  { id: 'edit.transform.rot270', label: 'Rotate 90° Counter Clockwise', run: () => T.quickTransform('rot270'), enabled: hasDoc },
+  { id: 'transform.commit', label: 'Commit Transform', keys: ['Enter'], run: T.commitTransform, enabled: T.transforming },
+  { id: 'transform.cancel', label: 'Cancel Transform', keys: ['Escape'], run: T.cancelTransform, enabled: T.transforming },
   { id: 'edit.fillBg', label: 'Fill with Background Color', keys: ['Ctrl+Backspace', 'Ctrl+Delete'], run: () => A.fillWith(get().bg), enabled: hasDoc },
 
   // Image
@@ -162,9 +171,17 @@ export const COMMANDS: Command[] = [
 const byId = new Map(COMMANDS.map((c) => [c.id, c]))
 export const command = (id: string): Command | undefined => byId.get(id)
 
+/** Commands that work alongside an open transform; anything else commits it first. */
+const TRANSFORM_SAFE = /^(transform\.|edit\.transform\.|edit\.undo$|edit\.freeTransform$|view\.|help\.|color\.|tool\.(size|softer|harder|opacity)|layer\.nudge)/
+
+function execute(c: Command): void {
+  if (T.transforming() && !TRANSFORM_SAFE.test(c.id)) T.commitTransform()
+  c.run()
+}
+
 export function run(id: string): void {
   const c = byId.get(id)
-  if (c && (c.enabled?.() ?? true)) c.run()
+  if (c && (c.enabled?.() ?? true)) execute(c)
 }
 
 export function keysFor(id: string): string[] {
@@ -179,6 +196,8 @@ function cycleDoc(dir: 1 | -1): void {
 }
 
 function nudge(dx: number, dy: number): void {
+  const t = get().transform
+  if (t) return T.updateTransform({ ...t.params, cx: t.params.cx + dx, cy: t.params.cy + dy })
   if (get().tool === 'move') A.nudgeActive(dx, dy)
 }
 
@@ -231,11 +250,12 @@ export function comboOf(e: KeyboardEvent): string {
   return [e.ctrlKey || e.metaKey ? 'Ctrl' : '', e.altKey ? 'Alt' : '', e.shiftKey ? 'Shift' : '', key].filter(Boolean).join('+')
 }
 
-let keymap: Map<string, string> | null = null
+let keymap: Map<string, string[]> | null = null
 
-function buildKeymap(): Map<string, string> {
-  const m = new Map<string, string>()
-  for (const c of COMMANDS) for (const k of c.keys ?? []) m.set(k, c.id)
+/** A key can serve several commands (Enter commits a transform or a crop); the first enabled one wins. */
+function buildKeymap(): Map<string, string[]> {
+  const m = new Map<string, string[]>()
+  for (const c of COMMANDS) for (const k of c.keys ?? []) m.set(k, [...(m.get(k) ?? []), c.id])
   return m
 }
 
@@ -257,10 +277,10 @@ export function handleKeydown(e: KeyboardEvent): boolean {
   if (get().dialog) return false
   if (isTyping(e.target)) return false
   keymap ??= buildKeymap()
-  const id = keymap.get(comboOf(e))
-  if (!id) return false
-  const c = byId.get(id)!
+  const ids = keymap.get(comboOf(e))
+  if (!ids) return false
   e.preventDefault()
-  if (c.enabled?.() ?? true) c.run()
+  const c = ids.map((id) => byId.get(id)!).find((x) => x.enabled?.() ?? true)
+  if (c) execute(c)
   return true
 }

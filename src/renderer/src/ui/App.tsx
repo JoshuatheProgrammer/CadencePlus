@@ -118,6 +118,12 @@ function menus(): Record<string, MenuEntry[]> {
       { cmd: 'edit.fillFg' },
       { cmd: 'edit.fillBg' },
       { sep: true },
+      { cmd: 'edit.freeTransform' },
+      {
+        label: 'Transform',
+        submenu: () => [{ cmd: 'edit.transform.rot180' }, { cmd: 'edit.transform.rot90' }, { cmd: 'edit.transform.rot270' }, { sep: true }, { cmd: 'edit.transform.flipH' }, { cmd: 'edit.transform.flipV' }]
+      },
+      { sep: true },
       { cmd: 'help.shortcuts', label: 'Keyboard Shortcuts…' }
     ],
     Image: [
@@ -234,7 +240,7 @@ function MenuList({ entries, x, y, onClose }: { entries: MenuEntry[]; x: number;
               onClick={() => {
                 if (!enabled) return
                 onClose()
-                c.run()
+                run(c.id)
               }}
             >
               <span className="check">{e.checked ? '✓' : ''}</span>

@@ -28,7 +28,12 @@ function errorText(e: unknown): string {
  * shows why) if the edit was refused.
  */
 export function edit(label: string, recipe: (d: Draft<ImageDocument>) => void, coalesce?: string): boolean {
-  const ds = activeDocState()
+  return editDoc(get().activeId, label, recipe, coalesce)
+}
+
+/** edit() on a specific document. */
+export function editDoc(docId: string | null, label: string, recipe: (d: Draft<ImageDocument>) => void, coalesce?: string): boolean {
+  const ds = get().docs.find((d) => d.id === docId)
   if (!ds) return false
   try {
     const h = apply(ds.history, label, recipe, coalesce)
