@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import * as A from '../src/core/affine'
-import { adjustmentFilter, blurFilter, defaultAdjustment, scaleFilter } from '../src/core/adjustments'
+import { adjustmentFilter, adjustmentOp, blurFilter, defaultAdjustment, scaleFilter } from '../src/core/adjustments'
+import * as L from '../src/core/lut'
 import { hexToRgb, hsvToRgb, parseHex, rgbToHex, rgbToHsv } from '../src/core/color'
 import * as E from '../src/core/edit'
 import { colorMask, maskBounds } from '../src/core/flood'
@@ -324,5 +325,50 @@ describe('affine maths', () => {
     expect(p.sx).toBeCloseTo(p.sy * 1)
     const c = A.scaleFromHandle(p0, 100, 50, -1, 0, { x: -100, y: 0 }, false, true)
     expect([c.cx, c.cy, c.sx]).toEqual([50, 25, 2])
+  })
+})
+
+describe('levels and curves tables', () => {
+  it('levels: identity, input clipping, gamma, output range', () => {
+    expect(Array.from(L.levelsTable(L.DEFAULT_LEVELS))).toEqual(Array.from({ length: 256 }, (_, i) => i))
+    const t = L.levelsTable({ inBlack: 50, inWhite: 200, gamma: 1, outBlack: 0, outWhite: 255 })
+    expect([t[0], t[50], t[125], t[200], t[255]]).toEqual([0, 0, 128, 255, 255])
+    const g = L.levelsTable({ ...L.DEFAULT_LEVELS, gamma: 2 })
+    expect(g[64]).toBe(Math.round(Math.sqrt(64 / 255) * 255))
+    const o = L.levelsTable({ ...L.DEFAULT_LEVELS, outBlack: 20, outWhite: 220 })
+    expect([o[0], o[255]]).toEqual([20, 220])
+  })
+
+  it('curves pass through their points and never overshoot', () => {
+    const t = L.curveTable([0, 0, 64, 32, 192, 224, 255, 255])
+    expect([t[0], t[64], t[192], t[255]]).toEqual([0, 32, 224, 255])
+    for (let i = 1; i < 256; i++) expect(t[i]).toBeGreaterThanOrEqual(t[i - 1])
+    expect(Array.from(L.curveTable(L.IDENTITY_CURVE))).toEqual(Array.from({ length: 256 }, (_, i) => i))
+    const inv = L.curveTable([0, 255, 255, 0])
+    expect([inv[0], inv[128], inv[255]]).toEqual([255, 127, 0])
+  })
+
+  it('combines channel then master and applies on the CPU', () => {
+    const id = Uint8Array.from({ length: 256 }, (_, i) => i)
+    const half = Uint8Array.from({ length: 256 }, (_, i) => i >> 1)
+    const lut = L.combine(half, id, id, id)
+    const px = new Uint8ClampedArray([200, 100, 50, 255])
+    L.applyLutToPixels(px, lut)
+    expect(Array.from(px)).toEqual([100, 50, 25, 255])
+    expect(L.isIdentityLut(L.combine(id, id, id, id))).toBe(true)
+  })
+
+  it('adjustment ops: identity is null; levels/curves give LUTs; others give filters', () => {
+    expect(adjustmentOp(defaultAdjustment('levels'))).toBeNull()
+    expect(adjustmentOp(defaultAdjustment('curves'))).toBeNull()
+    expect(adjustmentOp({ kind: 'levels', params: { inWhite: 128 } })).toBeInstanceOf(Uint8Array)
+    expect(adjustmentOp(defaultAdjustment('invert'))).toBe('invert(1)')
+  })
+
+  it('histogram counts non-transparent pixels', () => {
+    const h = L.histogram(new Uint8ClampedArray([255, 0, 0, 255, 0, 0, 0, 0]))
+    expect(h.r[255]).toBe(1)
+    expect(h.r[0]).toBe(0)
+    expect(h.rgb[76]).toBe(1)
   })
 })

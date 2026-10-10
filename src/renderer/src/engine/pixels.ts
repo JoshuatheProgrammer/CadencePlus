@@ -2,10 +2,11 @@
  * Pixel operations that produce new tiles. None of these touch the model;
  * they return tile maps for an edit() to store, so undo stays automatic.
  */
-import { adjustmentFilter, scaleFilter } from '@core/adjustments'
+import { adjustmentOp, type PixelOp } from '@core/adjustments'
 import { colorMask, maskBounds } from '@core/flood'
 import { intersectRect, rasterBounds, tileKey, TILE, unionRect, type ImageDocument, type Layer, type Rect, type TileMap, type TileSurface } from '@core/model'
 import type { Selection } from '@core/selection'
+import { drawWithOp } from './ops'
 import { compositeOp, renderComposite } from './render'
 import { maskFromArray, selectionMask } from './selection'
 import { drawTiles, getTile, makeTile, poolCanvas, rasterToCanvas, tilesFromCanvas, type Ctx2D } from './tiles'
@@ -263,21 +264,23 @@ export function mergeToTiles(doc: ImageDocument, layers: Layer[], background?: s
     g.globalAlpha = l.opacity
     g.globalCompositeOperation = compositeOp(l)
     if (l.content.type === 'adjustment') {
+      const aop = adjustmentOp(l.content.adjustment)
+      if (!aop) {
+        g.restore()
+        continue
+      }
       const copy = poolCanvas('merge.adjust', b.w, b.h)
       copy.getContext('2d')!.drawImage(c, 0, 0)
       if (masked) {
         const fl = poolCanvas('merge.layer', b.w, b.h)
         const fg = fl.getContext('2d')!
-        fg.filter = adjustmentFilter(l.content.adjustment)
-        fg.drawImage(copy, 0, 0)
-        fg.filter = 'none'
+        drawWithOp(fg, copy, aop)
         fg.globalCompositeOperation = 'destination-out'
         drawTiles(fg, l.mask!, -b.x, -b.y)
         g.drawImage(fl, 0, 0)
       } else {
         if (l.opacity >= 1 && l.blend === 'normal') g.clearRect(0, 0, b.w, b.h)
-        g.filter = adjustmentFilter(l.content.adjustment)
-        g.drawImage(copy, 0, 0)
+        drawWithOp(g, copy, aop)
       }
     } else {
       // Pixels (or fill), cut by the mask, then composited.
@@ -357,14 +360,13 @@ export function maskVisibility(doc: ImageDocument, mask: TileSurface): Offscreen
   return c
 }
 
-/** Applies a CSS filter to a tile surface (within the selection). */
-export function filterLayer(doc: ImageDocument, content: TileSurface, filter: string): TileMap {
+/** Applies a pixel op (filter or tone curve) to a tile surface, within the selection. */
+export function filterLayer(doc: ImageDocument, content: TileSurface, op: PixelOp): TileMap {
   const full = rasterToCanvas(content, 'filter.src')
   if (!full) return content.tiles
   const out = poolCanvas('filter.out', full.rect.w, full.rect.h)
   const g = out.getContext('2d')!
-  g.filter = scaleFilter(filter, 1)
-  g.drawImage(full.canvas, 0, 0)
+  drawWithOp(g, full.canvas, op)
   return applyToLayer(doc, content, canvasSource(out, full.rect.x, full.rect.y), full.rect, 'replace')
 }
 

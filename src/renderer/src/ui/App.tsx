@@ -131,6 +131,8 @@ function menus(): Record<string, MenuEntry[]> {
         label: 'Adjustments',
         submenu: () => [
           { cmd: 'image.brightnessContrast' },
+          { cmd: 'image.levels' },
+          { cmd: 'image.curves' },
           { cmd: 'image.hueSaturation' },
           { cmd: 'image.blackWhite' },
           { cmd: 'image.sepia' },
@@ -153,7 +155,7 @@ function menus(): Record<string, MenuEntry[]> {
       { cmd: 'layer.newFill' },
       {
         label: 'New Adjustment Layer',
-        submenu: () => [{ cmd: 'layer.adj.brightnessContrast' }, { cmd: 'layer.adj.hueSaturation' }, { cmd: 'layer.adj.blackWhite' }, { cmd: 'layer.adj.sepia' }, { cmd: 'layer.adj.invert' }]
+        submenu: () => [{ cmd: 'layer.adj.brightnessContrast' }, { cmd: 'layer.adj.levels' }, { cmd: 'layer.adj.curves' }, { cmd: 'layer.adj.hueSaturation' }, { cmd: 'layer.adj.blackWhite' }, { cmd: 'layer.adj.sepia' }, { cmd: 'layer.adj.invert' }]
       },
       { cmd: 'layer.duplicate' },
       { cmd: 'layer.delete' },

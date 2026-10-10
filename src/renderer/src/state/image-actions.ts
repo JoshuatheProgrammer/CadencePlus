@@ -2,7 +2,7 @@
  * Layer, selection, edit and image commands. Pixel work happens in the engine
  * first; the resulting tile maps are stored with a single edit() each.
  */
-import { defaultAdjustment, type Adjustment, type AdjustmentKind } from '@core/adjustments'
+import { ADJUSTMENTS, defaultAdjustment, type Adjustment, type AdjustmentKind, type PixelOp } from '@core/adjustments'
 import * as E from '@core/edit'
 import { activeLayer, createDocument, TILE, type ImageDocument, type Rect } from '@core/model'
 import * as S from '@core/selection'
@@ -32,7 +32,7 @@ export function newAdjustmentLayer(kind: AdjustmentKind): void {
 }
 
 function kindLabel(kind: AdjustmentKind): string {
-  return { brightnessContrast: 'Brightness/Contrast', hueSaturation: 'Hue/Saturation', blackWhite: 'Black & White', invert: 'Invert', sepia: 'Sepia Tone' }[kind]
+  return ADJUSTMENTS[kind].label
 }
 
 export const selectLayer = (id: string, target: 'pixels' | 'mask' = 'pixels') => {
@@ -283,11 +283,11 @@ export function pickColor(x: number, y: number, toBackground: boolean): void {
 // ---------------------------------------------------------------------------
 
 /** Colour adjustments only make sense on pixels; blur also works on masks. */
-export function applyFilter(filter: string, label: string): void {
+export function applyFilter(filter: PixelOp, label: string): void {
   const d = doc()
   const t = d && paintTarget('apply an adjustment')
   if (!d || !t || filter === 'none') return
-  if (t.kind === 'mask' && !/^blur\(/.test(filter)) return void toast(`${label} changes colours, so it applies to pixels, not masks. Click the layer thumbnail to target its pixels.`, 'warn')
+  if (t.kind === 'mask' && !(typeof filter === 'string' && /^blur\(/.test(filter))) return void toast(`${label} changes colours, so it applies to pixels, not masks. Click the layer thumbnail to target its pixels.`, 'warn')
   const tiles = filterLayer(d, t.surface, filter)
   edit(label, (x) => E.setSurfaceTiles(x, t.layer.id, t.kind, tiles))
 }

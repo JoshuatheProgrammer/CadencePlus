@@ -258,7 +258,7 @@ await check('Hue/Saturation dialog previews live and applies', async () => {
     sat.dispatchEvent(new Event('input', { bubbles: true }))
   })
   await settle(200)
-  const preview = await ev(() => window.__cadencePlus.get().filterPreview?.filter)
+  const preview = await ev(() => window.__cadencePlus.get().filterPreview?.op)
   expect(preview && preview.includes('saturate(0)'), `preview ${preview}`)
   expect(near(await px(5, 5), [255, 0, 0, 255]), 'preview must not change pixels')
   await win.click('.modal .btn.primary')
@@ -605,6 +605,56 @@ await check('the layer mask moves with a whole-layer transform', async () => {
   await win.keyboard.press('Enter')
   await settle()
   expect(near(await px(90, 20), [255, 0, 0, 255]) && near(await px(70, 20), [255, 255, 255, 255]) && near(await px(30, 20), [255, 255, 255, 255]), `${await px(90, 20)} ${await px(70, 20)} ${await px(30, 20)}`)
+})
+
+// ---------------------------------------------------------------- levels & curves
+await check('Levels and Curves adjustment layers (GPU lookup tables)', async () => {
+  await newDoc(40, 40)
+  await A('fillWith', '#808080')
+  await A('newAdjustmentLayer', 'levels')
+  const id = (await doc()).activeLayerId
+  await A('setAdjustmentParams', id, { kind: 'levels', params: { inBlack: 0, inWhite: 128, gamma: 1, outBlack: 0, outWhite: 255 } })
+  const lv = await px(5, 5)
+  expect(near(lv, [255, 255, 255, 255], 0), `levels ${lv}`)
+  await A('setAdjustmentParams', id, { kind: 'levels', params: { inBlack: 0, inWhite: 255, gamma: 2, outBlack: 0, outWhite: 255 } })
+  const g = await px(5, 5)
+  const want = Math.round(Math.sqrt(128 / 255) * 255)
+  expect(Math.abs(g[0] - want) <= 1, `gamma ${g[0]} vs ${want}`)
+  await A('deleteLayer', id)
+  await A('newAdjustmentLayer', 'curves')
+  const cid = (await doc()).activeLayerId
+  await A('setAdjustmentParams', cid, { kind: 'curves', params: {}, curves: { rgb: [0, 255, 255, 0] } })
+  const inv = await px(5, 5)
+  expect(near(inv, [127, 127, 127, 255], 0), `curve invert ${inv}`)
+  await A('setAdjustmentParams', cid, { kind: 'curves', params: {}, curves: { rgb: [0, 0, 255, 255], r: [0, 0, 255, 0] } })
+  const red = await px(5, 5)
+  expect(red[0] === 0 && red[1] === 128 && red[2] === 128, `red channel curve ${red}`)
+  return `levels ${lv[0]}, gamma ${g[0]}, curve ${inv[0]}`
+})
+
+await check('Curves dialog (Ctrl+M): drag a point, preview, OK applies', async () => {
+  await newDoc(40, 40)
+  await A('fillWith', '#808080')
+  await win.keyboard.press('Control+m')
+  await win.waitForSelector('.curve-graph')
+  const r = await win.locator('.curve-graph').boundingBox()
+  // Add a point at input 128 and drag it up to output ~192.
+  const x = r.x + (128 / 255) * r.width
+  await win.mouse.move(x, r.y + r.height * (1 - 128 / 255))
+  await win.mouse.down()
+  await win.mouse.move(x, r.y + r.height * (1 - 192 / 255), { steps: 6 })
+  await win.mouse.up()
+  await settle(200)
+  const preview = await ev(() => window.__cadencePlus.get().filterPreview?.op instanceof Uint8Array)
+  expect(preview, 'no LUT preview')
+  expect(near(await px(5, 5), [128, 128, 128, 255]), 'preview changed pixels')
+  await win.click('.modal .btn.primary')
+  await settle()
+  const p = await px(5, 5)
+  expect(Math.abs(p[0] - 192) <= 2 && p[0] === p[1], `curves applied ${p}`)
+  const label = await ev(() => window.__cadencePlus.get().docs.find((d) => d.id === window.__cadencePlus.get().activeId).history.presentLabel)
+  expect(label === 'Curves', `history label ${label}`)
+  return `${p[0]}`
 })
 
 await check('Ctrl+R toggles rulers without reloading the window', async () => {

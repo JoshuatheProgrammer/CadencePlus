@@ -198,8 +198,8 @@ export function SliderField({
   return (
     <span className="slider-field" title={title}>
       <span className="label">{label}</span>
-      <input type="range" min={min} max={max} step={step} value={value} style={{ width }} onChange={(e) => onChange(Number(e.target.value))} />
-      <ScrubNumber value={value} min={min} max={max} step={step} onChange={onChange} unit={unit} decimals={step < 1 ? 1 : 0} />
+      {width > 0 && <input type="range" min={min} max={max} step={step} value={value} style={{ width }} onChange={(e) => onChange(Number(e.target.value))} />}
+      <ScrubNumber value={value} min={min} max={max} step={step} onChange={onChange} unit={unit} decimals={step < 0.1 ? 2 : step < 1 ? 1 : 0} />
     </span>
   )
 }

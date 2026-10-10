@@ -4,7 +4,11 @@ import { rasterBounds } from '@core/model'
 import { selectionBounds } from '../../engine/selection'
 import * as A from '../../state/image-actions'
 import { useEditor } from '../../state/store'
-import { ScrubNumber, SliderField } from '../components'
+import { histogram } from '@core/lut'
+import type { ImageDocument } from '@core/model'
+import { renderComposite } from '../../engine/render'
+import { AdjustmentEditor, type Histograms } from '../AdjustmentEditor'
+import { ScrubNumber } from '../components'
 import { ColorField } from './ColorPanel'
 
 function NameField({ id, name, disabled }: { id: string; name: string; disabled: boolean }) {
@@ -25,12 +29,28 @@ function NameField({ id, name, disabled }: { id: string; name: string; disabled:
   )
 }
 
+const histCache = new WeakMap<object, Histograms>()
+
+/** Histogram of the image beneath an adjustment layer (cached per layer stack). */
+function histogramBelow(doc: ImageDocument, id: string): Histograms {
+  const i = doc.layers.findIndex((l) => l.id === id)
+  const below = doc.layers.slice(0, i)
+  const key = below[below.length - 1] ?? doc
+  const hit = histCache.get(key)
+  if (hit !== undefined) return hit
+  const c = renderComposite({ ...doc, layers: below }, 'hist.below')
+  const h = histogram(c.getContext('2d')!.getImageData(0, 0, c.width, c.height).data)
+  histCache.set(key, h)
+  return h
+}
+
 export function PropertiesPanel() {
   const doc = useEditor((s) => s.docs.find((d) => d.id === s.activeId)?.history.present ?? null)
   if (!doc) return <div className="panel"><div className="empty-hint">No document open.</div></div>
   const l = doc.layers.find((x) => x.id === doc.activeLayerId)
   const sel = doc.selection ? selectionBounds(doc.selection, doc.width, doc.height) : null
   const rb = l?.content.type === 'raster' ? rasterBounds(l.content) : null
+  const hist = l?.content.type === 'adjustment' ? histogramBelow(doc, l.id) : null
   return (
     <div className="panel">
       <div className="panel-body">
@@ -92,28 +112,11 @@ export function PropertiesPanel() {
                 </div>
               </div>
             )}
-            {l.content.type === 'adjustment' &&
-              (() => {
-                const a = l.content.adjustment
-                const def = ADJUSTMENTS[a.kind]
-                if (!def.params.length) return <div className="prop-row"><label /><div className="ctrl note">No settings.</div></div>
-                return def.params.map((p) => (
-                  <div className="prop-row" key={p.id}>
-                    <label>{p.label}</label>
-                    <div className="ctrl">
-                      <SliderField
-                        label=""
-                        value={a.params[p.id] ?? p.default}
-                        min={p.min}
-                        max={p.max}
-                        unit={p.unit}
-                        width={120}
-                        onChange={(v) => A.setAdjustmentParams(l.id, { ...a, params: { ...a.params, [p.id]: v } })}
-                      />
-                    </div>
-                  </div>
-                ))
-              })()}
+            {l.content.type === 'adjustment' && (
+              <div className="prop-editor">
+                <AdjustmentEditor a={l.content.adjustment} onChange={(a) => A.setAdjustmentParams(l.id, a)} hist={hist} sliderWidth={120} />
+              </div>
+            )}
           </div>
         )}
         {l && (

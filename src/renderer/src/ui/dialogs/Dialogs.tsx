@@ -1,11 +1,14 @@
 import { useEffect, useMemo, useState } from 'react'
-import { ADJUSTMENTS, adjustmentFilter, blurFilter, defaultAdjustment, type AdjustmentKind } from '@core/adjustments'
+import { ADJUSTMENTS, adjustmentOp, blurFilter, defaultAdjustment, type AdjustmentKind } from '@core/adjustments'
 import { MAX_DIMENSION } from '@core/model'
 import { exportImage, type ExportFormat } from '../../engine/io'
 import { COMMANDS } from '../../state/commands'
 import { exportAs, formatBytes, newDocument, type BackgroundChoice } from '../../state/doc-actions'
 import * as A from '../../state/image-actions'
 import { activeDoc, get, set, toast, useEditor, type Dialog } from '../../state/store'
+import { histogram } from '@core/lut'
+import { layerCanvas } from '../../engine/pixels'
+import { AdjustmentEditor } from '../AdjustmentEditor'
 import { Modal, NumberInput, SliderField } from '../components'
 import { Logo, Wordmark } from '../icons'
 
@@ -110,7 +113,7 @@ function NewDocumentDialog() {
 
 function AdjustDialog({ kind }: { kind: AdjustmentKind }) {
   const def = ADJUSTMENTS[kind]
-  const [params, setParams] = useState(defaultAdjustment(kind).params)
+  const [adj, setAdj] = useState(() => defaultAdjustment(kind))
   const [preview, setPreview] = useState(true)
   const target = useMemo(() => {
     const t = activeDoc() ? A.paintTarget('apply an adjustment') : null
@@ -120,14 +123,20 @@ function AdjustDialog({ kind }: { kind: AdjustmentKind }) {
     }
     return t?.layer ?? null
   }, [kind])
-  const filter = adjustmentFilter({ kind, params })
+  const op = useMemo(() => adjustmentOp(adj), [adj])
+  const hist = useMemo(() => {
+    const d = activeDoc()
+    if (!d || !target) return null
+    const c = layerCanvas(d, target, 'hist')
+    return histogram(c.getContext('2d')!.getImageData(0, 0, c.width, c.height).data)
+  }, [target])
   useEffect(() => {
     if (!target) return void set({ dialog: null })
-    set({ filterPreview: preview && filter !== 'none' ? { layerId: target.id, filter } : null })
-  }, [filter, preview, target])
+    set({ filterPreview: preview && op ? { layerId: target.id, op } : null })
+  }, [op, preview, target])
   const ok = () => {
     set({ dialog: null, filterPreview: null })
-    A.applyFilter(filter, def.label)
+    if (op) A.applyFilter(op, def.label)
   }
   if (!target) return null
   return (
@@ -141,7 +150,7 @@ function AdjustDialog({ kind }: { kind: AdjustmentKind }) {
           <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginRight: 'auto' }}>
             <input type="checkbox" checked={preview} onChange={(e) => setPreview(e.target.checked)} /> Preview
           </label>
-          <button className="btn" onClick={() => setParams(defaultAdjustment(kind).params)}>
+          <button className="btn" onClick={() => setAdj(defaultAdjustment(kind))}>
             Reset
           </button>
           <button className="btn" onClick={close}>
@@ -154,9 +163,7 @@ function AdjustDialog({ kind }: { kind: AdjustmentKind }) {
       }
     >
       <div className="adjust-grid">
-        {def.params.map((p) => (
-          <SliderField key={p.id} label={p.label} value={params[p.id]} min={p.min} max={p.max} unit={p.unit} width={200} onChange={(v) => setParams({ ...params, [p.id]: v })} />
-        ))}
+        <AdjustmentEditor a={adj} onChange={setAdj} hist={hist} />
         <span className="note">
           Applies to “{target.name}”{activeDoc()?.selection ? ' inside the selection' : ''}. For a non-destructive version use Layer → New Adjustment Layer.
         </span>
@@ -171,7 +178,7 @@ function BlurDialog() {
   const target = useMemo(() => A.paintTarget('blur it')?.layer ?? null, [])
   useEffect(() => {
     if (!target) return void set({ dialog: null })
-    set({ filterPreview: preview && radius > 0 ? { layerId: target.id, filter: blurFilter(radius) } : null })
+    set({ filterPreview: preview && radius > 0 ? { layerId: target.id, op: blurFilter(radius) } : null })
   }, [radius, preview, target])
   const ok = () => {
     set({ dialog: null, filterPreview: null })

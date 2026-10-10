@@ -118,6 +118,29 @@ await win.waitForTimeout(300)
 await win.screenshot({ path: join(out, '8-adjust.png') })
 await win.keyboard.press('Escape')
 
+// Levels and Curves dialogs on the photo
+await win.keyboard.press('Control+l')
+await win.waitForSelector('.levels')
+await win.waitForTimeout(250)
+await win.screenshot({ path: join(out, '10-levels.png') })
+await win.keyboard.press('Escape')
+await win.keyboard.press('Control+m')
+await win.waitForSelector('.curve-graph')
+{
+  const r = await win.locator('.curve-graph').boundingBox()
+  await win.mouse.move(r.x + r.width * 0.3, r.y + r.height * 0.7)
+  await win.mouse.down()
+  await win.mouse.move(r.x + r.width * 0.3, r.y + r.height * 0.78, { steps: 4 })
+  await win.mouse.up()
+  await win.mouse.move(r.x + r.width * 0.72, r.y + r.height * 0.28)
+  await win.mouse.down()
+  await win.mouse.move(r.x + r.width * 0.72, r.y + r.height * 0.2, { steps: 4 })
+  await win.mouse.up()
+}
+await win.waitForTimeout(250)
+await win.screenshot({ path: join(out, '11-curves.png') })
+await win.keyboard.press('Escape')
+
 // Free Transform on the painted document
 await win.evaluate(() => window.__cadencePlus.set((s) => ({ activeId: s.docs[1].id })))
 await win.waitForTimeout(300)

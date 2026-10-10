@@ -7,7 +7,7 @@ Status legend:
 - 📋 **Planned**: not in the interface yet, or shown disabled with an explanation.
 
 Last verified: 2026-10-10 on Windows 11, Electron 44.7.
-Suites: 35 unit (`npm test`) · 44 end-to-end (`npm run e2e`), all passing.
+Suites: 40 unit (`npm test`) · 46 end-to-end (`npm run e2e`), all passing.
 
 ## Phase 1: core image-editing workflow
 
@@ -53,7 +53,7 @@ Suites: 35 unit (`npm test`) · 44 end-to-end (`npm run e2e`), all passing.
 | Visibility, lock, opacity | ✅ | Locked layers refuse edits with a message. |
 | 16 blend modes | ✅ | Normal through Luminosity. Multiply verified numerically. |
 | Fill layers | ✅ | Editable colour; can be rasterized. |
-| Adjustment layers: Brightness/Contrast, Hue/Saturation, Black & White, Invert, Sepia | ✅ | Non-destructive; verified on/off. |
+| Adjustment layers: Brightness/Contrast, Levels, Curves, Hue/Saturation, Black & White, Invert, Sepia | ✅ | Non-destructive; verified on/off. Settings edited live in the Properties panel. |
 | Merge Down, Merge Visible, Flatten | ✅ | Composite preserved (tested). Like Photoshop, Merge Down bakes the upper layer's blend mode against the lower layer only. Flatten fills transparency with white and drops hidden layers. |
 | New Layer via Copy / Cut (Ctrl+J / Ctrl+Shift+J) | ✅ | |
 | Ctrl+click thumbnail to select layer pixels | ✅ | |
@@ -96,7 +96,8 @@ Suites: 35 unit (`npm test`) · 44 end-to-end (`npm run e2e`), all passing.
 | Gaussian blur with live preview | 🟡 | Pixels past the layer edge count as transparent, so edges soften toward transparency. |
 | Image Size (resample), Canvas Size (anchor) | ✅ | |
 | Rotate 90° / 180°, Flip Horizontal / Vertical | ✅ | Pixel mapping verified. |
-| Levels, Curves, sharpen, noise, other filters | 📋 | Need a WebGL pass (planned with the colour pipeline). |
+| Levels (Ctrl+L) and Curves (Ctrl+M) | ✅ | Destructive (dialog with histogram and live preview) and as adjustment layers (edited in Properties). Curves: RGB plus per-channel, monotone interpolation (never overshoots), click to add points, drag off to remove. Run as 256-entry lookup tables on the GPU (WebGL2) with a CPU fallback; values verified (e.g. gamma 2 on 128 → 181). |
+| Sharpen, noise, other filters | 📋 | |
 | Undo / redo with History panel (50 steps per document) | ✅ | Click a step to jump; failed edits never enter history. |
 
 ## Planned phases

@@ -7,10 +7,11 @@
  * never the checkerboard). Only tiles inside the target are drawn, and tile
  * edges are snapped to whole target pixels so scaled tiles never show seams.
  */
-import { adjustmentFilter, scaleFilter } from '@core/adjustments'
+import { adjustmentOp, type PixelOp } from '@core/adjustments'
 import { parseTileKey, tileKey, TILE, type ImageDocument, type Layer, type TileSurface } from '@core/model'
 import type { Affine } from '@core/affine'
 import { layerMip, mipLevel } from './mips'
+import { drawWithOp } from './ops'
 import { partMatrix, type FloatState } from './transform'
 import { selectionMask } from './selection'
 import { getTile, poolCanvas, type Ctx2D } from './tiles'
@@ -38,7 +39,7 @@ export interface StrokePreview {
 /** A destructive filter being previewed on one layer (adjustment dialogs). */
 export interface FilterPreview {
   layerId: string
-  filter: string
+  op: PixelOp
 }
 
 export interface RenderOptions {
@@ -221,8 +222,8 @@ export function renderDocument(target: OffscreenCanvas | HTMLCanvasElement, doc:
     const masked = !!l.mask?.enabled
 
     if (l.content.type === 'adjustment') {
-      const f = scaleFilter(adjustmentFilter(l.content.adjustment), o.xf.scale)
-      if (f === 'none' || l.opacity <= 0) continue
+      const aop = adjustmentOp(l.content.adjustment)
+      if (!aop || l.opacity <= 0) continue
       const copy = poolCanvas('render.adjust', W, H)
       copy.getContext('2d')!.drawImage(target, 0, 0)
       ctx.save()
@@ -230,9 +231,7 @@ export function renderDocument(target: OffscreenCanvas | HTMLCanvasElement, doc:
         // Filtered copy, hidden where the mask hides, laid over the original.
         const fl = poolCanvas('render.filtered', W, H)
         const fg = fl.getContext('2d')!
-        fg.filter = f
-        fg.drawImage(copy, 0, 0)
-        fg.filter = 'none'
+        drawWithOp(fg, copy, aop, o.xf.scale)
         fg.globalCompositeOperation = 'destination-out'
         fg.drawImage(hideOnTarget(l, doc, o.xf, W, H, maskStroke), 0, 0)
         ctx.globalAlpha = l.opacity
@@ -242,8 +241,7 @@ export function renderDocument(target: OffscreenCanvas | HTMLCanvasElement, doc:
         if (l.opacity >= 1 && op === 'source-over') ctx.clearRect(r.x, r.y, r.w, r.h)
         ctx.globalAlpha = l.opacity
         ctx.globalCompositeOperation = op
-        ctx.filter = f
-        ctx.drawImage(copy, 0, 0)
+        drawWithOp(ctx, copy, aop, o.xf.scale)
       }
       ctx.restore()
       continue
@@ -269,12 +267,9 @@ export function renderDocument(target: OffscreenCanvas | HTMLCanvasElement, doc:
     } else drawContent(tg, l, doc, o.xf, W, H)
 
     if (fp) {
-      const f = scaleFilter(fp.filter, o.xf.scale)
       const filtered = poolCanvas('render.filtered', W, H)
       const fg = filtered.getContext('2d')!
-      fg.filter = f
-      fg.drawImage(tmp, 0, 0)
-      fg.filter = 'none'
+      drawWithOp(fg, tmp, fp.op, o.xf.scale)
       if (doc.selection) {
         drawSelectionMask(fg, doc, o.xf)
         // tmp = tmp × (1 − mask) + filtered × mask
