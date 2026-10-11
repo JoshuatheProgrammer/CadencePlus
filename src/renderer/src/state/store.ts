@@ -14,7 +14,7 @@ import { DEFAULT_TEXT_STYLE, type ShapeKind, type TextStyle } from '@core/vector
 import type { FilterPreview, StrokePreview } from '../engine/render'
 import type { FloatState } from '../engine/transform'
 
-export type ToolId = 'move' | 'marquee' | 'lasso' | 'wand' | 'crop' | 'eyedropper' | 'brush' | 'eraser' | 'bucket' | 'gradient' | 'text' | 'shape' | 'hand' | 'zoom'
+export type ToolId = 'move' | 'marquee' | 'lasso' | 'wand' | 'crop' | 'eyedropper' | 'brush' | 'eraser' | 'clone' | 'heal' | 'bucket' | 'gradient' | 'text' | 'shape' | 'hand' | 'zoom'
 
 export interface ToolOptions {
   marquee: { shape: 'rect' | 'ellipse'; mode: SelMode }
@@ -22,6 +22,9 @@ export interface ToolOptions {
   wand: { mode: SelMode; tolerance: number; contiguous: boolean; sampleAll: boolean }
   brush: BrushOptions
   eraser: BrushOptions
+  /** Clone Stamp: `aligned` keeps the source offset between strokes. */
+  clone: BrushOptions & { aligned: boolean; sampleAll: boolean }
+  heal: BrushOptions & { aligned: boolean; sampleAll: boolean }
   bucket: { tolerance: number; contiguous: boolean; sampleAll: boolean; opacity: number }
   gradient: { kind: 'linear' | 'radial'; opacity: number; reverse: boolean; toTransparent: boolean }
   eyedropper: { size: number; sampleAll: boolean }
@@ -39,6 +42,8 @@ export const DEFAULT_OPTIONS: ToolOptions = {
   wand: { mode: 'replace', tolerance: 32, contiguous: true, sampleAll: false },
   brush: { ...DEFAULT_BRUSH },
   eraser: { ...DEFAULT_BRUSH, hardness: 100, pressureSize: false },
+  clone: { ...DEFAULT_BRUSH, hardness: 60, pressureSize: false, aligned: true, sampleAll: false },
+  heal: { ...DEFAULT_BRUSH, size: 40, hardness: 50, pressureSize: false, aligned: true, sampleAll: false },
   bucket: { tolerance: 32, contiguous: true, sampleAll: false, opacity: 100 },
   gradient: { kind: 'linear', opacity: 100, reverse: false, toTransparent: false },
   eyedropper: { size: 1, sampleAll: true },
@@ -110,6 +115,11 @@ export interface EditorState {
   maskView: string | null
   /** Type being edited on the canvas. `key` coalesces the edits into one undo step. */
   textEdit: { docId: string; layerId: string; key: string; isNew: boolean } | null
+  /** Clone Stamp / Healing Brush source (Alt+click) and the offset in use. */
+  cloneSource: { docId: string; x: number; y: number } | null
+  cloneOffset: { docId: string; dx: number; dy: number } | null
+  /** User keyboard shortcuts: command id → keys (replaces the default list). */
+  keyOverrides: Record<string, string[]>
   /** Free Transform / selection move in progress. */
   transform: { fs: FloatState; params: TransformParams; mode: 'transform' | 'move' } | null
 }
@@ -143,7 +153,10 @@ export const useEditor = create<EditorState>(() => ({
   busy: null,
   maskView: null,
   transform: null,
-  textEdit: null
+  textEdit: null,
+  cloneSource: null,
+  cloneOffset: null,
+  keyOverrides: {}
 }))
 
 export const get = useEditor.getState

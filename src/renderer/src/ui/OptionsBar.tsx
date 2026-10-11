@@ -37,7 +37,7 @@ const MODES: { v: SelMode; label: string; title: string }[] = [
   { v: 'intersect', label: 'Intersect', title: 'Intersect with selection (Shift+Alt)' }
 ]
 
-function BrushOptions({ tool }: { tool: 'brush' | 'eraser' }) {
+function BrushOptions({ tool }: { tool: 'brush' | 'eraser' | 'clone' | 'heal' }) {
   const o = useEditor((s) => s.options[tool])
   const up = (p: Partial<ToolOptions['brush']>) => setToolOption(tool, p)
   return (
@@ -210,6 +210,17 @@ function ToolOptionsBar() {
     case 'brush':
     case 'eraser':
       body = <BrushOptions tool={tool} />
+      break
+    case 'clone':
+    case 'heal':
+      body = (
+        <>
+          <BrushOptions tool={tool} />
+          <span className="sep-v" />
+          <Check label="Aligned" checked={o[tool].aligned} onChange={(v) => setToolOption(tool, { aligned: v })} title="Keep the source offset between strokes" />
+          <Check label="Sample all layers" checked={o[tool].sampleAll} onChange={(v) => setToolOption(tool, { sampleAll: v })} />
+        </>
+      )
       break
     case 'gradient':
       body = (

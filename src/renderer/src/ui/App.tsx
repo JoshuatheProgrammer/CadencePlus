@@ -345,7 +345,7 @@ function ToolRail() {
             className={`tool-btn${tool === t.id ? ' active' : ''}`}
             disabled={!!t.unavailable}
             aria-pressed={tool === t.id}
-            title={t.unavailable ? `${t.label} (${t.key}) — unavailable\n${t.unavailable}` : `${t.label} (${t.key})`}
+            title={t.unavailable ? `${t.label} — unavailable\n${t.unavailable}` : `${t.label}${keysFor(`tool.${t.id}`).length ? ` (${keysFor(`tool.${t.id}`).join(', ')})` : ''}`}
             onClick={() => run(`tool.${t.id}`)}
           >
             <t.icon size={17} />
@@ -550,6 +550,7 @@ export function App() {
     void window.cadencePlus.getSettings().then((s) => {
       set({
         recent: (s.recentFiles as string[]) ?? [],
+        keyOverrides: (s.keymap as Record<string, string[]>) ?? {},
         ...(Array.isArray(s.swatches) ? { swatches: s.swatches as string[] } : {})
       })
     })

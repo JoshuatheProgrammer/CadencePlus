@@ -1829,3 +1829,39 @@ textarea:focus-visible {
 .layer-row .indent {
   flex: 0 0 auto;
 }
+
+/* ---------- Shortcut editor ---------- */
+.shortcut-tools {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+.shortcut-list {
+  max-height: 60vh;
+  overflow: auto;
+  columns: 2;
+  column-gap: 28px;
+}
+.shortcut-row .keys {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+.shortcut-row.recording {
+  background: var(--c-accent-soft);
+  border-radius: var(--radius);
+}
+.kbd-x {
+  border: none;
+  background: none;
+  color: var(--c-text-3);
+  padding: 0 0 0 4px;
+  cursor: default;
+  font-size: 11px;
+}
+.kbd-x:hover {
+  color: var(--c-danger);
+}

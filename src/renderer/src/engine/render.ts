@@ -37,6 +37,8 @@ export interface StrokePreview {
   /** Painting on the layer mask: `maskValue` is the hide amount (0..1) being painted. */
   target?: 'pixels' | 'mask'
   maskValue?: number
+  /** Clone Stamp: the stroke shows `canvas` (document-sized) shifted so pixel p shows p + (dx, dy). */
+  clone?: { canvas: OffscreenCanvas; dx: number; dy: number }
 }
 
 /** A destructive filter being previewed on one layer (adjustment dialogs). */
@@ -166,6 +168,12 @@ function strokeOnTarget(stroke: StrokePreview, doc: ImageDocument, xf: Xf, W: nu
   sg.imageSmoothingQuality = 'low'
   sg.drawImage(stroke.canvas, r.x, r.y, r.w, r.h)
   drawSelectionMask(sg, doc, xf)
+  if (stroke.clone) {
+    const { canvas, dx, dy } = stroke.clone
+    sg.globalCompositeOperation = 'source-in'
+    sg.drawImage(canvas, xf.ox - dx * xf.scale, xf.oy - dy * xf.scale, doc.width * xf.scale, doc.height * xf.scale)
+    sg.globalCompositeOperation = 'source-over'
+  }
   return sc
 }
 

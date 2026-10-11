@@ -11,6 +11,7 @@ import { dragRect, type SelMode } from '@core/selection'
 import { clampZoom, panBy, zoomAt, type View } from '@core/view'
 import { Stroke } from '../../engine/brush'
 import { layerAlphaAt } from '../../engine/pixels'
+import { clonePixels, healPixels, sourceSnapshot } from '../../engine/clone'
 import { floatSize } from '../../engine/transform'
 import { commitText, createShape, editText, moveVector, startNewText, textLayerAt } from '../../state/vector-actions'
 import { edit, setView } from '../../state/doc-actions'
@@ -276,6 +277,68 @@ function paint(erase: boolean): Handler {
   }
 }
 
+/**
+ * Clone Stamp and Healing Brush. Alt+click sets the source; strokes paint
+ * the source shifted by the offset (kept between strokes when aligned).
+ * Healing blends the result into the destination's colour on release.
+ */
+function cloneTool(heal: boolean): Handler {
+  return (c, p, e) => {
+    const s = get()
+    const o = heal ? s.options.heal : s.options.clone
+    const name = heal ? 'Healing Brush' : 'Clone Stamp'
+    if (e.altKey) {
+      set({ cloneSource: { docId: c.docId, x: p.x, y: p.y }, cloneOffset: null })
+      overlay.cloneMarker = { x: p.x, y: p.y }
+      requestOverlay()
+      return NOOP
+    }
+    const src = s.cloneSource
+    if (!src || src.docId !== c.docId) return toast(`Alt+click to set the point the ${name} samples from.`, 'info'), null
+    const t = A.paintTarget(heal ? 'heal it' : 'clone onto it')
+    if (!t) return null
+    if (t.kind === 'mask') return toast(`The ${name} works on pixels. Click the layer thumbnail to target them.`, 'warn'), null
+    const keep = o.aligned && s.cloneOffset?.docId === c.docId ? s.cloneOffset : null
+    const dx = keep ? keep.dx : src.x - p.x
+    const dy = keep ? keep.dy : src.y - p.y
+    set({ cloneOffset: { docId: c.docId, dx, dy } })
+    const snapshot = sourceSnapshot(c.doc, o.sampleAll, t.layer)
+    const stroke = new Stroke(c.doc.width, c.doc.height, '#000000', o, false)
+    stroke.add(p.x, p.y, 1)
+    const preview = () => set({ stroke: { layerId: t.layer.id, canvas: stroke.canvas, opacity: stroke.opacity, erase: false, rev: stroke.rev, clone: { canvas: snapshot, dx, dy } } })
+    const marker = (x: number, y: number) => {
+      overlay.cloneMarker = { x: x + dx, y: y + dy }
+      requestOverlay()
+    }
+    preview()
+    marker(p.x, p.y)
+    return {
+      move(q, ev) {
+        const evs = typeof ev.getCoalescedEvents === 'function' ? ev.getCoalescedEvents() : []
+        if (evs.length > 1) for (const ce of evs) {
+          const d = toDocFromEvent(c, ce)
+          stroke.add(d.x, d.y, 1)
+        }
+        else stroke.add(q.x, q.y, 1)
+        preview()
+        marker(q.x, q.y)
+      },
+      up() {
+        if (stroke.bounds) {
+          const px = heal ? healPixels(stroke.canvas, snapshot, snapshot, dx, dy, stroke.bounds, Math.max(2, o.size / 4)) : clonePixels(stroke.canvas, snapshot, dx, dy)
+          A.commitPixels(px, stroke.bounds, stroke.opacity, name)
+        }
+        set({ stroke: null })
+        overlay.cloneMarker = get().cloneSource ? { x: get().cloneSource!.x, y: get().cloneSource!.y } : null
+        requestOverlay()
+      },
+      cancel() {
+        set({ stroke: null })
+      }
+    }
+  }
+}
+
 /** Set by the viewport: maps a pointer event to document coordinates. */
 let toDocFromEvent: (c: ToolContext, e: PointerEvent) => { x: number; y: number } = () => ({ x: 0, y: 0 })
 export function setEventMapper(fn: typeof toDocFromEvent): void {
@@ -425,6 +488,8 @@ export const HANDLERS: Partial<Record<ToolId, Handler>> = {
   eyedropper,
   brush: paint(false),
   eraser: paint(true),
+  clone: cloneTool(false),
+  heal: cloneTool(true),
   gradient,
   bucket,
   zoom

@@ -255,6 +255,15 @@ export function commitStroke(stroke: Stroke, label: string): void {
   edit(label, (x) => E.setSurfaceTiles(x, t.layer.id, t.kind, tiles))
 }
 
+/** Paints finished pixels (Clone Stamp, Healing Brush) onto the target within `bounds`. */
+export function commitPixels(px: OffscreenCanvas, bounds: Rect, opacity: number, label: string): void {
+  const d = doc()
+  const t = d && paintTarget()
+  if (!d || !t) return
+  const tiles = applyToLayer(d, t.surface, canvasSource(px), bounds, 'over', opacity)
+  edit(label, (x) => E.setSurfaceTiles(x, t.layer.id, t.kind, tiles))
+}
+
 function fillArea(source: Source, mode: 'over' | 'erase', opacity: number, label: string): void {
   const d = doc()
   const t = d && paintTarget(mode === 'erase' ? 'clear it' : 'fill it')
@@ -443,7 +452,7 @@ export async function paste(): Promise<void> {
 /** [ and ]: brush size steps like Photoshop's. */
 export function stepBrushSize(dir: 1 | -1): void {
   const s = get()
-  const key = s.tool === 'eraser' ? 'eraser' : 'brush'
+  const key = s.tool === 'eraser' || s.tool === 'clone' || s.tool === 'heal' ? s.tool : 'brush'
   const cur = s.options[key].size
   const step = cur < 10 ? 1 : cur < 50 ? 5 : cur < 100 ? 10 : cur < 300 ? 25 : 50
   const size = Math.max(1, Math.min(2500, cur + dir * step))
@@ -452,7 +461,7 @@ export function stepBrushSize(dir: 1 | -1): void {
 
 export function stepHardness(dir: 1 | -1): void {
   const s = get()
-  const key = s.tool === 'eraser' ? 'eraser' : 'brush'
+  const key = s.tool === 'eraser' || s.tool === 'clone' || s.tool === 'heal' ? s.tool : 'brush'
   const hardness = Math.max(0, Math.min(100, s.options[key].hardness + dir * 25))
   set({ options: { ...s.options, [key]: { ...s.options[key], hardness } } })
 }

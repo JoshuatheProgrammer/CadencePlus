@@ -242,6 +242,8 @@ export function NumberInput({ value, onChange, min, max, width = 80, decimals = 
 export function Modal({ title, children, actions, onClose, onSubmit, width }: { title: string; children: ReactNode; actions: ReactNode; onClose?: () => void; onSubmit?: () => void; width?: number }) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      // The shortcut editor is recording a key: let it have every key.
+      if (document.body.dataset.recording === '1') return
       if (e.key === 'Escape' && onClose) {
         e.stopPropagation()
         onClose()

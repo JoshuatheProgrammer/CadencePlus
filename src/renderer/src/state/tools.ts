@@ -23,6 +23,8 @@ export const TOOLS: (ToolDef | null)[] = [
   { id: 'eyedropper', label: 'Eyedropper', key: 'I', icon: I.IconEyedropper, hint: 'Click to pick the foreground colour · Alt+click picks the background colour' },
   null,
   { id: 'brush', label: 'Brush', key: 'B', icon: I.IconBrush, hint: '[ ] size · Shift+[ ] hardness · 1–0 opacity · Shift+click draws a straight line · Alt picks a colour' },
+  { id: 'clone', label: 'Clone Stamp', key: 'S', icon: I.IconStamp, hint: 'Alt+click to set the source, then paint · Aligned keeps the offset between strokes' },
+  { id: 'heal', label: 'Healing Brush', key: 'J', icon: I.IconHeal, hint: "Alt+click to set the source, then paint over a blemish · the patch takes on the surrounding colour and light when you release" },
   { id: 'eraser', label: 'Eraser', key: 'E', icon: I.IconEraser, hint: '[ ] size · Shift+[ ] hardness · erases to transparency' },
   { id: 'gradient', label: 'Gradient', key: 'G', icon: I.IconGradient, hint: 'Drag to draw a gradient from the foreground colour · Shift snaps to 45°' },
   { id: 'bucket', label: 'Paint Bucket', key: 'Shift+G', icon: I.IconBucket, hint: 'Click to fill similar colours with the foreground colour' },

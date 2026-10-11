@@ -7,7 +7,7 @@ Status legend:
 - 📋 **Planned**: not in the interface yet, or shown disabled with an explanation.
 
 Last verified: 2026-10-10 on Windows 11, Electron 44.7.
-Suites: 49 unit (`npm test`) · 58 end-to-end (`npm run e2e`), all passing.
+Suites: 49 unit (`npm test`) · 61 end-to-end (`npm run e2e`), all passing.
 
 ## Phase 1: core image-editing workflow
 
@@ -19,7 +19,7 @@ Suites: 49 unit (`npm test`) · 58 end-to-end (`npm run e2e`), all passing.
 | Dockable panels: Layers, Properties, History, Color, Swatches, Navigator | ✅ | dockview. Layout persists; Window → Reset Workspace. |
 | Multiple documents as tabs | ✅ | Ctrl+Tab cycles; middle-click closes. |
 | Home screen with presets and recent files | ✅ | |
-| Keyboard shortcuts (Photoshop-style) | ✅ | Help → Keyboard Shortcuts lists them. Not yet user-rebindable. |
+| Keyboard shortcuts (Photoshop-style), rebindable | ✅ | Help → Keyboard Shortcuts (Ctrl+/): search, record new keys, remove, reset one or all. A key already in use moves to the new command and the dialog names the previous owner. Saved in settings; menus and tooltips follow. |
 | Styled tooltips, toasts, focus states | ✅ | |
 | Unavailable tools shown disabled with a reason | ✅ | (Every tool in the rail now works.) |
 
@@ -91,7 +91,9 @@ Suites: 49 unit (`npm test`) · 58 end-to-end (`npm run e2e`), all passing.
 | Type tool (live type layers) | ✅ | Click to add point type, click type to edit it; edited on the canvas over the real rendering. Font (installed fonts from a curated list), weight, italic, size, alignment, colour, leading, tracking; multi-line. One undo step per editing session; Esc cancels; empty new type leaves no trace. Stays vector through Free Transform, save/reopen, Image Size and canvas rotation; Rasterize Layer converts it. |
 | Shape tool (rectangle, rounded rectangle, ellipse, polygon, line) | ✅ | Vector shape layers: fill (foreground), stroke (background) and width, corner radius, sides, size; edited in Properties; transform without resampling. |
 | Type on a path, paragraph (box) type, character/paragraph panels, pen paths | 📋 | |
-| Clone stamp, healing, dodge/burn, smudge | 📋 | |
+| Clone Stamp (S) | ✅ | Alt+click sets the source; aligned or non-aligned offset; samples the current layer or all layers; live preview; brush size/hardness/opacity/flow. |
+| Healing Brush (J) | ✅ | Clone with frequency-separation healing on release: the source's detail on the destination's own colour and light (verified: healing a light area from a dark source keeps the light tone). Spot healing (no source) is not built. |
+| Dodge/burn, sponge, smudge | 📋 | Phase 6. |
 
 ### Image commands
 | Feature | Status | Notes |
@@ -108,7 +110,7 @@ Suites: 49 unit (`npm test`) · 58 end-to-end (`npm run e2e`), all passing.
 
 | Phase | Scope |
 |---|---|
-| 2 | Layer masks and groups, Free Transform, move selected pixels, Type tool, shapes, clone stamp/healing, Levels/Curves (WebGL), autosave/recovery, rebindable shortcuts |
+| 2 ✅ | Layer masks and groups, Free Transform, move selected pixels, Type tool, shapes, clone stamp/healing, Levels/Curves (WebGL), autosave/recovery, rebindable shortcuts |
 | 3 | Colour management: 16-bit/float pipeline, ICC profiles, soft-proofing |
 | 4 | PSD import/export, TIFF, camera RAW |
 | 5 | Monorepo with Cadence (shared `ui/` and `core/` packages) |

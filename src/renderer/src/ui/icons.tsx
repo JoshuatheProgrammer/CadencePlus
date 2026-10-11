@@ -47,6 +47,12 @@ export const IconBrush = I(
   </>
 )
 export const IconStamp = I(<path d="M6.2 2.5h3.6v3.2L9 8H7l-.8-2.3zM2.5 8h11v2.5h-11zM4 13.5h8" />)
+export const IconHeal = I(
+  <>
+    <rect x="1.8" y="5.5" width="12.4" height="5" rx="2.5" transform="rotate(-45 8 8)" />
+    <path d="M6.6 6.6l2.8 2.8M7.3 8.7h.1M8.7 7.3h.1" />
+  </>
+)
 export const IconEraser = I(<path d="M9.5 2.3l4.2 4.2-6.8 6.8H4.1L2 11.2zM5.6 5.9l4.5 4.5M7.5 13.3h6.5" />)
 export const IconGradient = I(
   <>

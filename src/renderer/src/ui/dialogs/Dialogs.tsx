@@ -11,6 +11,7 @@ import { layerCanvas } from '../../engine/pixels'
 import { AdjustmentEditor } from '../AdjustmentEditor'
 import { Modal, NumberInput, SliderField } from '../components'
 import { Logo, Wordmark } from '../icons'
+import { ShortcutsDialog } from './ShortcutsDialog'
 
 const close = () => set({ dialog: null, filterPreview: null })
 
@@ -431,58 +432,6 @@ function ExportDialog() {
 // ---------------------------------------------------------------------------
 // Misc
 // ---------------------------------------------------------------------------
-
-function ShortcutsDialog() {
-  const groups = useMemo(() => {
-    const out = new Map<string, { label: string; keys: string[] }[]>()
-    const names: Record<string, string> = { file: 'File', edit: 'Edit', image: 'Image', layer: 'Layer', select: 'Select', filter: 'Filter', view: 'View', tool: 'Tools', color: 'Color', help: 'Help', crop: 'Crop' }
-    for (const c of COMMANDS) {
-      if (!c.keys?.length) continue
-      const g = names[c.id.split('.')[0]] ?? 'Other'
-      if (!out.has(g)) out.set(g, [])
-      out.get(g)!.push({ label: c.label, keys: c.keys })
-    }
-    return [...out.entries()]
-  }, [])
-  return (
-    <Modal
-      title="Keyboard Shortcuts"
-      onClose={close}
-      width={720}
-      actions={
-        <button className="btn primary" onClick={close}>
-          Close
-        </button>
-      }
-    >
-      <div className="shortcut-cols">
-        {groups.map(([g, list]) => (
-          <div key={g} className="shortcut-group">
-            <div className="form-section">{g}</div>
-            {list.map((c) => (
-              <div key={c.label} className="shortcut-row">
-                <span>{c.label}</span>
-                <span>
-                  {c.keys.map((k) => (
-                    <span key={k} className="kbd-cap">
-                      {k}
-                    </span>
-                  ))}
-                </span>
-              </div>
-            ))}
-          </div>
-        ))}
-        <div className="shortcut-group">
-          <div className="form-section">Canvas</div>
-          <div className="shortcut-row"><span>Pan</span><span><span className="kbd-cap">Space</span> + drag</span></div>
-          <div className="shortcut-row"><span>Zoom at pointer</span><span><span className="kbd-cap">Ctrl</span> + wheel</span></div>
-          <div className="shortcut-row"><span>Scroll sideways</span><span><span className="kbd-cap">Shift</span> + wheel</span></div>
-        </div>
-      </div>
-    </Modal>
-  )
-}
 
 function AboutDialog() {
   const v = window.cadencePlus.versions

@@ -14,6 +14,8 @@ export interface OverlayState {
   lasso?: number[] | null
   gradient?: [number, number, number, number] | null
   zoomRect?: Rect | null
+  /** Clone/heal source marker (document coordinates). */
+  cloneMarker?: { x: number; y: number } | null
   /** Pointer position in viewport CSS pixels (null when outside). */
   pointer?: { x: number; y: number } | null
 }
@@ -41,6 +43,8 @@ export interface OverlayFrame {
   antsPhase: number
   /** Draw the Free Transform box. */
   transform?: boolean
+  /** Clone Stamp / Healing Brush active: show the source marker. */
+  showCloneMarker?: boolean
 }
 
 const toScreen = (f: OverlayFrame, x: number, y: number): [number, number] => [(x - f.view.cx) * f.view.zoom + f.w / 2, (y - f.view.cy) * f.view.zoom + f.h / 2]
@@ -302,6 +306,17 @@ export function drawOverlay(canvas: HTMLCanvasElement, f: OverlayFrame): void {
       cp.lineTo(g.center.x, g.center.y + 7)
       dualStroke(ctx, cp, 1)
     }
+  }
+
+  if (overlay.cloneMarker && f.showCloneMarker) {
+    const [mx, my] = S(overlay.cloneMarker.x, overlay.cloneMarker.y)
+    const p = new Path2D()
+    p.arc(mx, my, 6, 0, Math.PI * 2)
+    p.moveTo(mx - 10, my)
+    p.lineTo(mx + 10, my)
+    p.moveTo(mx, my - 10)
+    p.lineTo(mx, my + 10)
+    dualStroke(ctx, p, 1)
   }
 
   if (f.brushSize && overlay.pointer) {

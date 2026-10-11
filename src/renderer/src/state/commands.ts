@@ -193,8 +193,27 @@ export function run(id: string): void {
   if (c && (c.enabled?.() ?? true)) execute(c)
 }
 
+/** Keys for a command: the user's override, else the default. */
 export function keysFor(id: string): string[] {
+  return get().keyOverrides[id] ?? byId.get(id)?.keys ?? []
+}
+
+export function defaultKeysFor(id: string): string[] {
   return byId.get(id)?.keys ?? []
+}
+
+/** Sets (or with null, resets) a command's keys and saves them. */
+export function setKeysFor(id: string, keys: string[] | null): void {
+  const o = { ...get().keyOverrides }
+  if (keys === null || JSON.stringify(keys) === JSON.stringify(defaultKeysFor(id))) delete o[id]
+  else o[id] = keys
+  set({ keyOverrides: o })
+  void window.cadencePlus.setSetting('keymap', o)
+}
+
+export function resetAllKeys(): void {
+  set({ keyOverrides: {} })
+  void window.cadencePlus.setSetting('keymap', {})
 }
 
 function cycleDoc(dir: 1 | -1): void {
@@ -213,7 +232,7 @@ function nudge(dx: number, dy: number): void {
 function setOpacityKey(k: string): void {
   const t = get().tool
   const v = k === '0' ? 100 : Number(k) * 10
-  if (t === 'brush' || t === 'eraser') setToolOption(t, { opacity: v })
+  if (t === 'brush' || t === 'eraser' || t === 'clone' || t === 'heal') setToolOption(t, { opacity: v })
   else if (t === 'bucket' || t === 'gradient') setToolOption(t, { opacity: v })
 }
 
@@ -260,11 +279,13 @@ export function comboOf(e: KeyboardEvent): string {
 }
 
 let keymap: Map<string, string[]> | null = null
+let keymapFor: Record<string, string[]> | null = null
 
 /** A key can serve several commands (Enter commits a transform or a crop); the first enabled one wins. */
 function buildKeymap(): Map<string, string[]> {
   const m = new Map<string, string[]>()
-  for (const c of COMMANDS) for (const k of c.keys ?? []) m.set(k, [...(m.get(k) ?? []), c.id])
+  for (const c of COMMANDS) for (const k of keysFor(c.id)) m.set(k, [...(m.get(k) ?? []), c.id])
+  keymapFor = get().keyOverrides
   return m
 }
 
@@ -285,7 +306,7 @@ function isTyping(t: EventTarget | null): boolean {
 export function handleKeydown(e: KeyboardEvent): boolean {
   if (get().dialog) return false
   if (isTyping(e.target)) return false
-  keymap ??= buildKeymap()
+  if (!keymap || keymapFor !== get().keyOverrides) keymap = buildKeymap()
   const ids = keymap.get(comboOf(e))
   if (!ids) return false
   e.preventDefault()

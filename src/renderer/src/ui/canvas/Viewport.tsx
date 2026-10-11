@@ -41,7 +41,7 @@ export function Viewport() {
   const [tfCursor, setTfCursor] = useState<string | null>(null)
   const showGrid = useEditor((s) => s.showPixelGrid)
   const zoomOut = useEditor((s) => s.options.zoom.out)
-  const brushSize = useEditor((s) => (s.tool === 'brush' ? s.options.brush.size : s.tool === 'eraser' ? s.options.eraser.size : null))
+  const brushSize = useEditor((s) => (s.tool === 'brush' || s.tool === 'eraser' || s.tool === 'clone' || s.tool === 'heal' ? s.options[s.tool].size : null))
   const doc = ds?.history.present ?? null
   const view = ds?.view ?? null
 
@@ -138,7 +138,7 @@ export function Viewport() {
           c.width = W
           c.height = H
         }
-        drawOverlay(c, { doc, view, w: size.w, h: size.h, dpr: size.dpr, crop: tool === 'crop' || crop ? crop : null, brushSize: space || transform ? null : brushSize, antsPhase: phase.current, transform: !!transform })
+        drawOverlay(c, { doc, view, w: size.w, h: size.h, dpr: size.dpr, crop: tool === 'crop' || crop ? crop : null, brushSize: space || transform ? null : brushSize, antsPhase: phase.current, transform: !!transform, showCloneMarker: tool === 'clone' || tool === 'heal' })
       })
     }
     onOverlayRequest(draw)
