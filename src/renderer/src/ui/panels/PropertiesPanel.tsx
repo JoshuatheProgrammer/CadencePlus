@@ -58,7 +58,7 @@ export function PropertiesPanel() {
         {l && (
           <div className="prop-section">
             <div className="prop-head">
-              {l.content.type === 'adjustment' ? ADJUSTMENTS[l.content.adjustment.kind].label : { raster: 'Pixel Layer', fill: 'Fill Layer', text: 'Type Layer', shape: 'Shape Layer' }[l.content.type]}
+              {l.content.type === 'adjustment' ? ADJUSTMENTS[l.content.adjustment.kind].label : { raster: 'Pixel Layer', fill: 'Fill Layer', text: 'Type Layer', shape: 'Shape Layer', group: 'Group' }[l.content.type]}
             </div>
             <div className="prop-row">
               <label>Name</label>

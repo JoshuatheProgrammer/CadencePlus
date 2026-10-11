@@ -6,11 +6,12 @@ import { adjustmentOp, type PixelOp } from '@core/adjustments'
 import { colorMask, maskBounds } from '@core/flood'
 import type { TransformParams } from '@core/affine'
 import { intersectRect, isVector, rasterBounds, tileKey, TILE, unionRect, type ImageDocument, type Layer, type Rect, type TileMap, type TileSurface } from '@core/model'
+import { ancestors, descendants } from '@core/tree'
 import { mapParams } from '@core/vector'
 import type { Selection } from '@core/selection'
 import { drawWithOp } from './ops'
 import { drawVector, vectorBounds } from './vector'
-import { compositeOp, renderComposite } from './render'
+import { renderComposite, renderDocument } from './render'
 import { maskFromArray, selectionMask } from './selection'
 import { drawTiles, getTile, makeTile, poolCanvas, rasterToCanvas, tilesFromCanvas, type Ctx2D } from './tiles'
 
@@ -261,65 +262,39 @@ export function bucketSource(doc: ImageDocument, x: number, y: number, tolerance
   return { source: canvasSource(c), bounds }
 }
 
-/** Composites `layers` (bottom → top, as in the document) into one tile map at origin (0, 0). */
+/**
+ * Composites `layers` (bottom → top, as in the document; groups include
+ * their children) into one tile map at origin (0, 0), through the same
+ * compositor as the screen, keeping pixels outside the canvas.
+ */
 export function mergeToTiles(doc: ImageDocument, layers: Layer[], background?: string): TileMap {
+  const ids = new Set(layers.map((l) => l.id))
+  for (const l of layers) if (l.content.type === 'group') for (const d of descendants(doc.layers, l.id)) ids.add(d.id)
+  const sub = doc.layers.filter((l) => ids.has(l.id))
   const docRect = { x: 0, y: 0, w: doc.width, h: doc.height }
   let b: Rect | null = background ? docRect : null
-  for (const l of layers) {
+  for (const l of sub) {
+    if (!effectivelyVisibleIn(sub, l)) continue
     if (l.content.type === 'raster') b = unionRect(b, rasterBounds(l.content))
     else if (isVector(l.content)) b = unionRect(b, vectorBounds(l.content))
-    else b = unionRect(b, docRect)
+    else if (l.content.type === 'fill' || l.content.type === 'adjustment') b = unionRect(b, docRect)
   }
   if (!b) return {}
   const c = poolCanvas('merge', b.w, b.h)
-  const g = c.getContext('2d')!
+  renderDocument(c, { ...doc, layers: sub }, { xf: { scale: 1, ox: -b.x, oy: -b.y }, width: b.w, height: b.h, clip: false })
+  let src: OffscreenCanvas = c
   if (background) {
+    src = poolCanvas('merge.bg', b.w, b.h)
+    const g = src.getContext('2d')!
     g.fillStyle = background
     g.fillRect(-b.x, -b.y, doc.width, doc.height)
+    g.drawImage(c, 0, 0)
   }
-  for (const l of layers) {
-    if (!l.visible) continue
-    const masked = !!l.mask?.enabled
-    g.save()
-    g.globalAlpha = l.opacity
-    g.globalCompositeOperation = compositeOp(l)
-    if (l.content.type === 'adjustment') {
-      const aop = adjustmentOp(l.content.adjustment)
-      if (!aop) {
-        g.restore()
-        continue
-      }
-      const copy = poolCanvas('merge.adjust', b.w, b.h)
-      copy.getContext('2d')!.drawImage(c, 0, 0)
-      if (masked) {
-        const fl = poolCanvas('merge.layer', b.w, b.h)
-        const fg = fl.getContext('2d')!
-        drawWithOp(fg, copy, aop)
-        fg.globalCompositeOperation = 'destination-out'
-        drawTiles(fg, l.mask!, -b.x, -b.y)
-        g.drawImage(fl, 0, 0)
-      } else {
-        if (l.opacity >= 1 && l.blend === 'normal') g.clearRect(0, 0, b.w, b.h)
-        drawWithOp(g, copy, aop)
-      }
-    } else {
-      // Pixels (or fill), cut by the mask, then composited.
-      const lc = masked ? poolCanvas('merge.layer', b.w, b.h) : null
-      const lg = lc ? lc.getContext('2d')! : g
-      if (l.content.type === 'raster') drawTiles(lg, l.content, -b.x, -b.y)
-      else if (l.content.type === 'fill') {
-        lg.fillStyle = l.content.color
-        lg.fillRect(-b.x, -b.y, doc.width, doc.height)
-      } else if (isVector(l.content)) drawVector(lg, l.content, { a: 1, b: 0, c: 0, d: 1, e: -b.x, f: -b.y })
-      if (lc) {
-        lg.globalCompositeOperation = 'destination-out'
-        drawTiles(lg, l.mask!, -b.x, -b.y)
-        g.drawImage(lc, 0, 0)
-      }
-    }
-    g.restore()
-  }
-  return tilesFromCanvas(c, b.x, b.y, 0, 0)
+  return tilesFromCanvas(src, b.x, b.y, 0, 0)
+}
+
+function effectivelyVisibleIn(layers: Layer[], l: Layer): boolean {
+  return l.visible && ancestors(layers, l).every((g) => g.visible)
 }
 
 /** Layer pixels with the mask baked in (Apply Mask), on the layer's own tile grid. */

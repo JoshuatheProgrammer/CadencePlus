@@ -31,6 +31,7 @@ export function startTransform(mode: 'transform' | 'move' = 'transform'): boolea
   if (!l.visible) return toast(`“${l.name}” is hidden. Show it to ${what}.`, 'warn'), false
   if (l.content.type === 'fill') return toast(`“${l.name}” is a fill layer and covers the whole canvas; rasterize it to transform it.`, 'warn'), false
   if (l.content.type === 'adjustment') return toast('Adjustment layers have no pixels to transform.', 'warn'), false
+  if (l.content.type === 'group') return toast('Transforming a whole group is not supported yet. Transform its layers one at a time, or merge the group (Ctrl+E) first.', 'warn'), false
   if (doc.target === 'mask' && doc.selection) return toast('Transforming part of a mask is not supported yet. Click the layer thumbnail to transform pixels.', 'warn'), false
   const fs = beginFloat(doc, l, ds.id)
   if (!fs) return toast(doc.selection ? 'The selected area of this layer is empty.' : `“${l.name}” is empty — there is nothing to transform.`, 'warn'), false

@@ -157,8 +157,12 @@ function menus(): Record<string, MenuEntry[]> {
         label: 'New Adjustment Layer',
         submenu: () => [{ cmd: 'layer.adj.brightnessContrast' }, { cmd: 'layer.adj.levels' }, { cmd: 'layer.adj.curves' }, { cmd: 'layer.adj.hueSaturation' }, { cmd: 'layer.adj.blackWhite' }, { cmd: 'layer.adj.sepia' }, { cmd: 'layer.adj.invert' }]
       },
+      { cmd: 'layer.newGroup' },
       { cmd: 'layer.duplicate' },
       { cmd: 'layer.delete' },
+      { sep: true },
+      { cmd: 'layer.group' },
+      { cmd: 'layer.ungroup' },
       {
         label: 'Layer Mask',
         submenu: () => [

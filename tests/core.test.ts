@@ -3,6 +3,7 @@ import * as A from '../src/core/affine'
 import { adjustmentFilter, adjustmentOp, blurFilter, defaultAdjustment, scaleFilter } from '../src/core/adjustments'
 import * as L from '../src/core/lut'
 import * as V from '../src/core/vector'
+import * as T from '../src/core/tree'
 import { hexToRgb, hsvToRgb, parseHex, rgbToHex, rgbToHsv } from '../src/core/color'
 import * as E from '../src/core/edit'
 import { colorMask, maskBounds } from '../src/core/flood'
@@ -416,5 +417,71 @@ describe('vector layers', () => {
     h = dropLast(h)
     expect(h.present.layers).toHaveLength(1)
     expect(h.future).toHaveLength(0)
+  })
+})
+
+describe('layer groups', () => {
+  const setup = () => {
+    const d = doc()
+    E.addLayer(d, undefined, 'A')
+    const a = d.activeLayerId!
+    E.addLayer(d, undefined, 'B')
+    const b = d.activeLayerId!
+    const g = E.groupLayer(d, b, 'G')
+    return { d, a, b, g }
+  }
+
+  it('groups a layer in place and lists it under the group', () => {
+    const { d, b, g } = setup()
+    expect(d.layers.find((l) => l.id === b)!.parent).toBe(g)
+    const rows = T.displayRows(d.layers).map((r) => [r.layer.name, r.depth])
+    expect(rows).toEqual([['G', 0], ['B', 1], ['A', 0], ['Layer 1', 0]])
+    E.setCollapsed(d, g, true)
+    expect(T.displayRows(d.layers).map((r) => r.layer.name)).toEqual(['G', 'A', 'Layer 1'])
+  })
+
+  it('locked or hidden groups block their children', () => {
+    const { d, b, g } = setup()
+    d.activeLayerId = b
+    E.setLayerVisible(d, g, false)
+    expect(() => E.rasterTarget(d, 'paint')).toThrow(/hidden/)
+    E.setLayerVisible(d, g, true)
+    E.setLayerLocked(d, g, true)
+    expect(() => E.setLayerOpacity(d, b, 0.5)).toThrow(/locked group/)
+  })
+
+  it('moves into and out of groups, refusing cycles', () => {
+    const { d, a, g } = setup()
+    E.moveLayerInto(d, a, g, d.layers.findIndex((l) => l.id === g))
+    expect(d.layers.find((l) => l.id === a)!.parent).toBe(g)
+    const inner = E.addGroup(d, 'Inner')
+    expect(() => E.moveLayerInto(d, g, inner, 0)).toThrow(/into itself/)
+  })
+
+  it('duplicate copies the subtree; delete removes it; ungroup releases children', () => {
+    const { d, b, g } = setup()
+    const copy = E.duplicateLayer(d, g)
+    expect(T.descendants(d.layers, copy)).toHaveLength(1)
+    expect(T.descendants(d.layers, copy)[0].id).not.toBe(b)
+    E.deleteLayer(d, copy)
+    expect(d.layers.some((l) => l.id === copy)).toBe(false)
+    expect(d.layers).toHaveLength(4)
+    E.ungroup(d, g)
+    expect(d.layers.find((l) => l.id === b)!.parent).toBeNull()
+    expect(d.layers.some((l) => l.id === g)).toBe(false)
+  })
+
+  it('reorder stays among siblings; offsetLayers moves group children', () => {
+    const { d, a, b, g } = setup()
+    E.addLayer(d, undefined, 'C')
+    const c = d.activeLayerId!
+    expect(d.layers.find((l) => l.id === c)!.parent).toBe(g)
+    E.reorderLayer(d, c, -1)
+    expect(T.childrenOf(d.layers, g).map((l) => l.name)).toEqual(['C', 'B'])
+    const starts = E.positionsOf(d, [b, c])
+    E.offsetLayers(d, starts, 5, 7)
+    const lb = d.layers.find((l) => l.id === b)!.content
+    expect(lb.type === 'raster' && [lb.x, lb.y]).toEqual([5, 7])
+    void a
   })
 })

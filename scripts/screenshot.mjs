@@ -180,6 +180,17 @@ await win.waitForTimeout(400)
   await win.waitForTimeout(300)
   await win.screenshot({ path: join(out, '12-type.png') })
   await win.keyboard.press('Control+Enter')
+  await win.evaluate(() => {
+    const { A, get } = window.__cadencePlus
+    const d = get().docs.find((x) => x.id === get().activeId).history.present
+    A.selectLayer(d.layers.find((l) => l.name.startsWith('Polygon')).id)
+    A.groupActive()
+    const d2 = get().docs.find((x) => x.id === get().activeId).history.present
+    A.selectLayer(d2.layers.find((l) => l.name.startsWith('Rectangle')).id)
+    A.groupActive()
+  })
+  await win.waitForTimeout(400)
+  await win.screenshot({ path: join(out, '13-groups.png') })
 }
 
 console.log(JSON.stringify({ errors, stats: await win.evaluate(() => window.__cadencePlus.storeStats()) }, null, 2))

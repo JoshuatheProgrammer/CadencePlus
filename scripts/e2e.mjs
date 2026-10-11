@@ -794,6 +794,103 @@ await check('type survives save/reopen and canvas rotation as a vector', async (
   expect(Math.abs(ink2 - ink) < ink * 0.05, `ink after rotation ${ink} → ${ink2}`)
 })
 
+// ---------------------------------------------------------------- groups
+await check('groups: Pass Through vs isolated blending, group opacity', async () => {
+  await newDoc(100, 100)
+  await A('fillWith', '#ff0000')
+  await A('newLayer')
+  await selectRect(0, 0, 50, 100)
+  await A('fillWith', '#00ff00')
+  await A('deselect')
+  const child = (await doc()).activeLayerId
+  await A('setLayerBlend', child, 'multiply')
+  await win.keyboard.press('Control+g')
+  await settle()
+  const g = (await doc()).activeLayerId
+  expect((await doc()).layers.find((l) => l.id === g).content.type === 'group', 'no group')
+  // Pass Through: the child multiplies with the red background → black
+  expect(near(await px(25, 50), [0, 0, 0, 255]), `pass-through ${await px(25, 50)}`)
+  // Normal (isolated): the child blends with nothing → stays green
+  await A('setLayerBlend', g, 'normal')
+  expect(near(await px(25, 50), [0, 255, 0, 255]), `isolated ${await px(25, 50)}`)
+  await A('setLayerOpacity', g, 0.5)
+  expect(near(await px(25, 50), [128, 128, 0, 255], 2), `group opacity ${await px(25, 50)}`)
+  expect(near(await px(75, 50), [255, 0, 0, 255]), 'outside the child')
+})
+
+await check('hidden group hides its children and blocks painting into them', async () => {
+  const d = await doc()
+  const g = d.layers.find((l) => l.content.type === 'group').id
+  const child = d.layers.find((l) => l.parent === g).id
+  await A('setLayerVisible', g, false)
+  expect(near(await px(25, 50), [255, 0, 0, 255]), 'still visible')
+  await A('selectLayer', child)
+  await A('fillWith', '#0000ff')
+  expect(near(await px(25, 50), [255, 0, 0, 255]), 'painted into a hidden group')
+  await A('setLayerVisible', g, true)
+})
+
+await check('Merge Group (Ctrl+E on a group) keeps the composite; Ungroup restores structure', async () => {
+  const d = await doc()
+  const g = d.layers.find((l) => l.content.type === 'group').id
+  await A('selectLayer', g)
+  const pts = [[25, 50], [75, 50]]
+  const before = await Promise.all(pts.map(([x, y]) => px(x, y)))
+  await win.keyboard.press('Control+e')
+  await settle()
+  const after = await Promise.all(pts.map(([x, y]) => px(x, y)))
+  before.forEach((b, i) => expect(near(b, after[i], 1), `${pts[i]}: ${b} → ${after[i]}`))
+  expect(!(await doc()).layers.some((l) => l.content.type === 'group'), 'group still there')
+  await win.keyboard.press('Control+z')
+  await settle()
+  await A('selectLayer', g)
+  await win.keyboard.press('Control+Shift+g')
+  await settle()
+  const d2 = await doc()
+  expect(!d2.layers.some((l) => l.content.type === 'group') && d2.layers.every((l) => !l.parent), 'ungroup')
+})
+
+await check('drag a layer into a group in the Layers panel; move the group with the Move tool', async () => {
+  await newDoc(100, 100, 'transparent')
+  await selectRect(0, 0, 10, 10)
+  await A('fillWith', '#ff0000')
+  await A('deselect')
+  await A('newGroup')
+  const g = (await doc()).activeLayerId
+  await A('setCollapsed', g, false)
+  await settle()
+  const src = await win.locator('.layer-row', { hasText: 'Layer 1' }).boundingBox()
+  const dst = await win.locator('.layer-row', { hasText: 'Group 1' }).boundingBox()
+  await win.mouse.move(src.x + 150, src.y + src.height / 2)
+  await win.mouse.down()
+  await win.mouse.move(dst.x + 150, dst.y + dst.height / 2, { steps: 8 })
+  await win.mouse.up()
+  await settle()
+  const d = await doc()
+  expect(d.layers.find((l) => l.name === 'Layer 1').parent === g, 'not moved into the group')
+  expect((await win.locator('.layer-row', { hasText: 'Layer 1' }).locator('.indent').count()) === 1, 'not indented')
+  await A('selectLayer', g)
+  await win.keyboard.press('v')
+  await drag([[5, 5], [45, 25]])
+  expect(near(await px(45, 25), [255, 0, 0, 255]) && (await px(5, 5))[3] === 0, `group move ${await px(45, 25)}`)
+})
+
+await check('groups survive save and reopen', async () => {
+  const path = join(work, 'groups.cadenceimg')
+  await ev((p) => window.__cadencePlus.set((s) => ({ docs: s.docs.map((d) => (d.id === s.activeId ? { ...d, path: p } : d)) })), path)
+  expect(await D('save'), 'save')
+  const shape = (await doc()).layers.map((l) => [l.name, l.content.type, l.parent ? 1 : 0])
+  await closeAllClean()
+  await D('openPaths', [path])
+  await win.waitForFunction(() => window.__cadencePlus.get().docs.length === 1)
+  await settle(300)
+  const d = await doc()
+  const g = d.layers.find((l) => l.content.type === 'group')
+  expect(g && d.layers.find((l) => l.name === 'Layer 1').parent === g.id, 'group structure lost')
+  expect(near(await px(45, 25), [255, 0, 0, 255]), 'pixels')
+  return `${shape.length} layers`
+})
+
 await check('Ctrl+R toggles rulers without reloading the window', async () => {
   const n = await ev(() => window.__cadencePlus.get().docs.length)
   await win.keyboard.press('Control+r')

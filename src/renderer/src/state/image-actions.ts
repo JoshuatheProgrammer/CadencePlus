@@ -5,6 +5,7 @@
 import { ADJUSTMENTS, defaultAdjustment, type Adjustment, type AdjustmentKind, type PixelOp } from '@core/adjustments'
 import * as E from '@core/edit'
 import { activeLayer, createDocument, TILE, type ImageDocument, type Rect } from '@core/model'
+import { descendants, effectivelyVisible } from '@core/tree'
 import * as S from '@core/selection'
 import type { BrushOptions } from '../engine/brush'
 import type { Stroke } from '../engine/brush'
@@ -24,6 +25,25 @@ function doc(): ImageDocument | null {
 // ---------------------------------------------------------------------------
 
 export const newLayer = () => edit('New Layer', (d) => void E.addLayer(d))
+export const newGroup = () => edit('New Group', (d) => void E.addGroup(d))
+
+export function groupActive(): void {
+  const d = doc()
+  if (d?.activeLayerId) edit('Group Layers', (x) => void E.groupLayer(x, d.activeLayerId!))
+}
+
+export function ungroupActive(): void {
+  const d = doc()
+  const l = d && activeLayer(d)
+  if (!l) return
+  if (l.content.type !== 'group') return void toast(`“${l.name}” is not a group.`, 'warn')
+  edit('Ungroup Layers', (x) => E.ungroup(x, l.id))
+}
+
+export const setCollapsed = (id: string, collapsed: boolean) => silent((d) => E.setCollapsed(d, id, collapsed))
+
+/** Drops `id` into `parent` at flat position `to` (Layers panel drag). */
+export const moveLayerInto = (id: string, parent: string | null, to: number) => edit('Reorder Layers', (d) => E.moveLayerInto(d, id, parent, to))
 export const newFillLayer = (color = get().fg) => edit('New Fill Layer', (d) => void E.addLayer(d, { type: 'fill', color }, E.nextLayerName(d, 'Color Fill')))
 
 export function newAdjustmentLayer(kind: AdjustmentKind): void {
@@ -71,6 +91,10 @@ export function nudgeActive(dx: number, dy: number): void {
   const d = doc()
   const l = d && activeLayer(d)
   if (!d || !l) return
+  if (l.content.type === 'group') {
+    const starts = E.positionsOf(d, descendants(d.layers, l.id).map((x) => x.id))
+    return void edit('Nudge', (x) => E.offsetLayers(x, starts, dx, dy), `nudge:${l.id}:${Date.now()}`)
+  }
   if (l.content.type === 'text' || l.content.type === 'shape') {
     const p = l.content.params
     return void edit('Nudge', (x) => E.setVectorParams(x, l.id, { ...p, cx: p.cx + dx, cy: p.cy + dy }), `nudge:${l.id}`)
@@ -81,10 +105,18 @@ export function nudgeActive(dx: number, dy: number): void {
 
 export function mergeDown(): void {
   const d = doc()
-  if (!d) return
-  const i = d.layers.findIndex((l) => l.id === d.activeLayerId)
-  if (i <= 0) return void toast('There is no layer below to merge into.', 'warn')
-  const pair = [d.layers[i - 1], d.layers[i]]
+  const a = d && activeLayer(d)
+  if (!d || !a) return
+  // With a group active, Ctrl+E merges the group into one layer.
+  if (a.content.type === 'group') {
+    if (!effectivelyVisible(d, a)) return void toast('Show the group to merge it.', 'warn')
+    const tiles = mergeToTiles(d, [a])
+    return void edit('Merge Group', (x) => void E.replaceWithMerged(x, [a.id], { name: a.name, tiles, x: 0, y: 0 }))
+  }
+  const sibs = d.layers.filter((l) => (l.parent ?? null) === (a.parent ?? null))
+  const below = sibs[sibs.indexOf(a) - 1]
+  if (!below) return void toast('There is no layer below to merge into.', 'warn')
+  const pair = [below, a]
   if (pair.some((l) => !l.visible)) return void toast('Both layers must be visible to merge.', 'warn')
   const tiles = mergeToTiles(d, pair)
   edit('Merge Down', (x) => void E.replaceWithMerged(x, pair.map((l) => l.id), { name: pair[0].name, tiles, x: 0, y: 0 }))
@@ -93,8 +125,8 @@ export function mergeDown(): void {
 export function mergeVisible(): void {
   const d = doc()
   if (!d) return
-  const vis = d.layers.filter((l) => l.visible)
-  if (vis.length < 2) return void toast('Merge Visible needs at least two visible layers.', 'warn')
+  const vis = d.layers.filter((l) => effectivelyVisible(d, l))
+  if (vis.filter((l) => l.content.type !== 'group').length < 2) return void toast('Merge Visible needs at least two visible layers.', 'warn')
   const tiles = mergeToTiles(d, vis)
   edit('Merge Visible', (x) => void E.replaceWithMerged(x, vis.map((l) => l.id), { name: vis[0].name, tiles, x: 0, y: 0 }))
 }
@@ -103,7 +135,7 @@ export function flattenImage(): void {
   const d = doc()
   if (!d) return
   // Flatten fills transparency with white and discards hidden layers, like Photoshop.
-  const tiles = mergeToTiles(d, d.layers.filter((l) => l.visible), '#ffffff')
+  const tiles = mergeToTiles(d, d.layers, '#ffffff')
   edit('Flatten Image', (x) => E.flattenDocument(x, tiles))
 }
 

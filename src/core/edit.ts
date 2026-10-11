@@ -7,6 +7,7 @@ import type { Adjustment } from './adjustments'
 import { checkDimensions, createLayer, findLayer, isVector, uid, type BlendMode, type ImageDocument, type Layer, type LayerContent, type LayerMask, type Rect, type TileMap, type TileSurface } from './model'
 import type { TransformParams } from './affine'
 import { translate, type Selection } from './selection'
+import { descendants, effectivelyVisible, isGroup, lockedBy } from './tree'
 import { keepTopLeft, type ShapeData, type TextData } from './vector'
 
 export class EditError extends Error {}
@@ -19,7 +20,9 @@ export function layer(doc: ImageDocument, id: string | null): Layer {
 
 export function unlocked(doc: ImageDocument, id: string | null, what: string): Layer {
   const l = layer(doc, id)
-  if (l.locked) throw new EditError(`“${l.name}” is locked. Unlock it to ${what}.`)
+  const by = lockedBy(doc, l)
+  if (by === l) throw new EditError(`“${l.name}” is locked. Unlock it to ${what}.`)
+  if (by) throw new EditError(`“${l.name}” is inside the locked group “${by.name}”. Unlock the group to ${what}.`)
   return l
 }
 
@@ -27,11 +30,11 @@ export function unlocked(doc: ImageDocument, id: string | null, what: string): L
 export function rasterTarget(doc: ImageDocument, what: string): Layer & { content: Extract<LayerContent, { type: 'raster' }> } {
   const l = unlocked(doc, doc.activeLayerId, what)
   if (l.content.type !== 'raster') {
-    const kind = { fill: 'a fill layer', adjustment: 'an adjustment layer', text: 'a type layer', shape: 'a shape layer' }[l.content.type]
-    const fix = l.content.type === 'adjustment' ? 'Choose a pixel layer' : 'Choose a pixel layer, or rasterize it (Layer → Rasterize Layer)'
+    const kind = { fill: 'a fill layer', adjustment: 'an adjustment layer', text: 'a type layer', shape: 'a shape layer', group: 'a group' }[l.content.type]
+    const fix = l.content.type === 'adjustment' || l.content.type === 'group' ? 'Choose a pixel layer' : 'Choose a pixel layer, or rasterize it (Layer → Rasterize Layer)'
     throw new EditError(`“${l.name}” is ${kind}. ${fix} to ${what}.`)
   }
-  if (!l.visible) throw new EditError(`“${l.name}” is hidden. Show it to ${what}.`)
+  if (!effectivelyVisible(doc, l)) throw new EditError(`“${l.name}” is hidden. Show it to ${what}.`)
   return l as Layer & { content: Extract<LayerContent, { type: 'raster' }> }
 }
 
@@ -44,8 +47,8 @@ export type PaintTarget = { layer: Layer; kind: 'pixels' | 'mask'; surface: Tile
 export function paintSurface(doc: ImageDocument, what: string): PaintTarget {
   const l = layer(doc, doc.activeLayerId)
   if (doc.target === 'mask' && l.mask) {
-    if (l.locked) throw new EditError(`“${l.name}” is locked. Unlock it to ${what}.`)
-    if (!l.visible) throw new EditError(`“${l.name}” is hidden. Show it to ${what}.`)
+    unlocked(doc, l.id, what)
+    if (!effectivelyVisible(doc, l)) throw new EditError(`“${l.name}” is hidden. Show it to ${what}.`)
     return { layer: l, kind: 'mask', surface: l.mask }
   }
   const r = rasterTarget(doc, what)
@@ -115,9 +118,17 @@ export function nextLayerName(doc: ImageDocument, base = 'Layer'): string {
   return `${base} ${n}`
 }
 
+/** New layers go above the active one, in its group; with a group active, inside it at the top. */
 function insertAboveActive(doc: ImageDocument, l: Layer): string {
   const at = doc.layers.findIndex((x) => x.id === doc.activeLayerId)
-  doc.layers.splice(at < 0 ? doc.layers.length : at + 1, 0, l)
+  const active = doc.layers[at]
+  if (active && isGroup(active) && !(active.content as { collapsed: boolean }).collapsed) {
+    l.parent = active.id
+    doc.layers.splice(at, 0, l)
+  } else {
+    l.parent = active?.parent ?? null
+    doc.layers.splice(at < 0 ? doc.layers.length : at + 1, 0, l)
+  }
   doc.activeLayerId = l.id
   doc.target = 'pixels'
   return l.id
@@ -131,17 +142,30 @@ export function addLayer(doc: ImageDocument, content?: LayerContent, name?: stri
 export function duplicateLayer(doc: ImageDocument, id: string): string {
   const src = layer(doc, id)
   const copy: Layer = { ...structuredClone(src), id: uid('layer'), name: `${src.name} copy`, locked: false }
-  doc.layers.splice(doc.layers.indexOf(src) + 1, 0, copy)
+  // A group is copied with everything in it; copies keep their order and nesting.
+  const kids = descendants(doc.layers, id)
+  const remap = new Map<string, string>([[id, copy.id]])
+  const kidCopies = kids.map((k) => {
+    const c: Layer = { ...structuredClone(k), id: uid('layer') }
+    remap.set(k.id, c.id)
+    return c
+  })
+  for (const c of kidCopies) c.parent = remap.get(c.parent!) ?? c.parent
+  const at = doc.layers.indexOf(src)
+  doc.layers.splice(at + 1, 0, ...kidCopies, copy)
   doc.activeLayerId = copy.id
   return copy.id
 }
 
 export function deleteLayer(doc: ImageDocument, id: string): void {
   const l = unlocked(doc, id, 'delete it')
-  if (doc.layers.length === 1) throw new EditError('A document needs at least one layer.')
+  const gone = new Set([id, ...descendants(doc.layers, id).map((x) => x.id)])
+  if (doc.layers.every((x) => gone.has(x.id))) throw new EditError('A document needs at least one layer.')
+  for (const k of descendants(doc.layers, id)) if (k.locked) throw new EditError(`“${k.name}” inside “${l.name}” is locked. Unlock it to delete the group.`)
+  if (gone.size > 1) doc.layers = doc.layers.filter((x) => x === l || !gone.has(x.id))
   const i = doc.layers.indexOf(l)
   doc.layers.splice(i, 1)
-  if (doc.activeLayerId === id) {
+  if (!doc.layers.some((x) => x.id === doc.activeLayerId)) {
     doc.activeLayerId = (doc.layers[i] ?? doc.layers[i - 1]).id
     doc.target = 'pixels'
   }
@@ -166,7 +190,9 @@ export function setLayerOpacity(doc: ImageDocument, id: string, opacity: number)
 }
 
 export function setLayerBlend(doc: ImageDocument, id: string, blend: BlendMode): void {
-  unlocked(doc, id, 'change its blend mode').blend = blend
+  const l = unlocked(doc, id, 'change its blend mode')
+  if (blend === 'pass-through' && !isGroup(l)) throw new EditError('Pass Through is only for groups.')
+  l.blend = blend
 }
 
 export function setFillColor(doc: ImageDocument, id: string, color: string): void {
@@ -235,14 +261,92 @@ export function rasterizeLayer(doc: ImageDocument, id: string, tiles: TileMap): 
   l.content = { type: 'raster', x: 0, y: 0, tiles }
 }
 
-/** Moves a layer one step up (+1) or down (-1) in the stack. */
+/** Moves a layer one step up (+1) or down (-1) among the layers of its group. */
 export function reorderLayer(doc: ImageDocument, id: string, dir: 1 | -1): void {
   const l = layer(doc, id)
-  const i = doc.layers.indexOf(l)
-  const j = i + dir
-  if (j < 0 || j >= doc.layers.length) throw new EditError(dir > 0 ? 'The layer is already at the top.' : 'The layer is already at the bottom.')
-  doc.layers.splice(i, 1)
-  doc.layers.splice(j, 0, l)
+  const sibs = doc.layers.filter((x) => (x.parent ?? null) === (l.parent ?? null))
+  const si = sibs.indexOf(l)
+  const other = sibs[si + dir]
+  if (!other) throw new EditError(dir > 0 ? 'The layer is already at the top.' : 'The layer is already at the bottom.')
+  doc.layers.splice(doc.layers.indexOf(l), 1)
+  const j = doc.layers.indexOf(other)
+  doc.layers.splice(dir > 0 ? j + 1 : j, 0, l)
+}
+
+/**
+ * Moves a layer into `parent` (null = top level) at flat position `to`
+ * (index in the list without the moved layer). A group can't go inside itself.
+ */
+export function moveLayerInto(doc: ImageDocument, id: string, parent: string | null, to: number): void {
+  const l = layer(doc, id)
+  if (parent && (parent === id || descendants(doc.layers, id).some((d) => d.id === parent))) throw new EditError('A group cannot be moved into itself.')
+  if (parent && !isGroup(findLayer(doc, parent))) throw new EditError('Layers can only be moved into groups.')
+  doc.layers.splice(doc.layers.indexOf(l), 1)
+  doc.layers.splice(Math.max(0, Math.min(doc.layers.length, to)), 0, l)
+  l.parent = parent
+}
+
+/** Creates an empty group above the active layer. */
+export function addGroup(doc: ImageDocument, name?: string): string {
+  return insertAboveActive(doc, { ...createLayer(name ?? nextLayerName(doc, 'Group'), { type: 'group', collapsed: false }), blend: 'pass-through' })
+}
+
+/** Puts a layer into a new group in its place (Ctrl+G). */
+export function groupLayer(doc: ImageDocument, id: string, name?: string): string {
+  const l = unlocked(doc, id, 'group it')
+  const g = { ...createLayer(name ?? nextLayerName(doc, 'Group'), { type: 'group', collapsed: false }), blend: 'pass-through' as BlendMode, parent: l.parent ?? null }
+  doc.layers.splice(doc.layers.indexOf(l) + 1, 0, g)
+  l.parent = g.id
+  doc.activeLayerId = g.id
+  doc.target = 'pixels'
+  return g.id
+}
+
+/** Releases a group's children into its parent and removes the group (Ctrl+Shift+G). */
+export function ungroup(doc: ImageDocument, id: string): void {
+  const g = unlocked(doc, id, 'ungroup it')
+  if (!isGroup(g)) throw new EditError(`“${g.name}” is not a group.`)
+  const kids = doc.layers.filter((x) => x.parent === id)
+  for (const k of kids) k.parent = g.parent ?? null
+  doc.layers.splice(doc.layers.indexOf(g), 1)
+  if (doc.activeLayerId === id) doc.activeLayerId = kids[kids.length - 1]?.id ?? doc.layers[doc.layers.length - 1].id
+}
+
+export function setCollapsed(doc: ImageDocument, id: string, collapsed: boolean): void {
+  const g = layer(doc, id)
+  if (g.content.type === 'group') g.content.collapsed = collapsed
+}
+
+/** Where a layer sits, for moving groups by an offset from a starting point. */
+export type LayerPos = { x?: number; y?: number; params?: TransformParams; mask?: { x: number; y: number } }
+
+export function positionsOf(doc: ImageDocument, ids: string[]): Record<string, LayerPos> {
+  const out: Record<string, LayerPos> = {}
+  for (const id of ids) {
+    const l = layer(doc, id)
+    const p: LayerPos = {}
+    if (l.content.type === 'raster') ((p.x = l.content.x), (p.y = l.content.y))
+    if (isVector(l.content)) p.params = l.content.params
+    if (l.mask) p.mask = { x: l.mask.x, y: l.mask.y }
+    out[id] = p
+  }
+  return out
+}
+
+/** Places layers at their starting positions plus (dx, dy) — moving a whole group. */
+export function offsetLayers(doc: ImageDocument, starts: Record<string, LayerPos>, dx: number, dy: number): void {
+  for (const [id, p] of Object.entries(starts)) {
+    const l = unlocked(doc, id, 'move it')
+    if (l.content.type === 'raster' && p.x !== undefined) {
+      l.content.x = p.x + dx
+      l.content.y = p.y! + dy
+    }
+    if (isVector(l.content) && p.params) l.content.params = { ...p.params, cx: p.params.cx + dx, cy: p.params.cy + dy }
+    if (l.mask && p.mask) {
+      l.mask.x = p.mask.x + dx
+      l.mask.y = p.mask.y + dy
+    }
+  }
 }
 
 /** Moves a layer to stack index `to` (0 = bottom). */
@@ -257,10 +361,13 @@ export function moveLayerTo(doc: ImageDocument, id: string, to: number): void {
 export function replaceWithMerged(doc: ImageDocument, ids: string[], merged: { name: string; tiles: TileMap; x: number; y: number }): string {
   if (!ids.length) throw new EditError('There are no layers to merge.')
   for (const id of ids) unlocked(doc, id, 'merge it')
+  // Merging a group merges everything in it.
+  const all = new Set(ids)
+  for (const id of ids) for (const d of descendants(doc.layers, id)) all.add(d.id)
   const top = Math.max(...ids.map((id) => doc.layers.findIndex((l) => l.id === id)))
-  const l = createLayer(merged.name, { type: 'raster', x: merged.x, y: merged.y, tiles: merged.tiles })
+  const l = { ...createLayer(merged.name, { type: 'raster', x: merged.x, y: merged.y, tiles: merged.tiles }), parent: doc.layers[top].parent ?? null }
   doc.layers.splice(top + 1, 0, l)
-  doc.layers = doc.layers.filter((x) => !ids.includes(x.id))
+  doc.layers = doc.layers.filter((x) => !all.has(x.id))
   doc.activeLayerId = l.id
   return l.id
 }

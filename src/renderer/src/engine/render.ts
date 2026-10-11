@@ -11,6 +11,7 @@ import { adjustmentOp, type PixelOp } from '@core/adjustments'
 import { parseTileKey, tileKey, TILE, type ImageDocument, type Layer, type TileSurface } from '@core/model'
 import type { Affine, TransformParams } from '@core/affine'
 import { isVector } from '@core/model'
+import { tree } from '@core/tree'
 import { layerMip, mipLevel } from './mips'
 import { drawWithOp } from './ops'
 import { drawVector } from './vector'
@@ -52,6 +53,8 @@ export interface RenderOptions {
   filterPreview?: FilterPreview | null
   /** Render just this layer at full opacity, normal blend (thumbnails, sampling). */
   onlyLayer?: string
+  /** false: don't clip to the canvas (merging keeps pixels outside it). */
+  clip?: boolean
   /** Show this layer's mask as greyscale instead of the image (Alt+click a mask). */
   maskView?: string | null
   /** Content being transformed: `m` maps the float's local box to the document; `params` places vector layers. */
@@ -72,7 +75,7 @@ function drawFloatPart(ctx: Ctx2D, canvas: OffscreenCanvas, m: Affine, xf: Xf): 
 }
 
 export function compositeOp(l: Layer): GlobalCompositeOperation {
-  return l.blend === 'normal' ? 'source-over' : (l.blend as GlobalCompositeOperation)
+  return l.blend === 'normal' || l.blend === 'pass-through' ? 'source-over' : (l.blend as GlobalCompositeOperation)
 }
 
 /** Document rect in target pixels, snapped. */
@@ -200,9 +203,11 @@ export function renderDocument(target: OffscreenCanvas | HTMLCanvasElement, doc:
   ctx.save()
   ctx.setTransform(1, 0, 0, 1, 0, 0)
   ctx.clearRect(0, 0, W, H)
-  ctx.beginPath()
-  ctx.rect(r.x, r.y, r.w, r.h)
-  ctx.clip()
+  if (o.clip !== false) {
+    ctx.beginPath()
+    ctx.rect(r.x, r.y, r.w, r.h)
+    ctx.clip()
+  }
 
   if (o.maskView) {
     const ml = doc.layers.find((l) => l.id === o.maskView)
@@ -216,10 +221,41 @@ export function renderDocument(target: OffscreenCanvas | HTMLCanvasElement, doc:
   }
 
   const only = o.onlyLayer ? doc.layers.find((l) => l.id === o.onlyLayer) : null
-  const layers = only ? [{ ...only, visible: true, opacity: 1, blend: 'normal' as const, mask: null }] : doc.layers
+  const layers = only ? [{ ...only, visible: true, opacity: 1, blend: 'normal' as const, mask: null }] : (tree(doc.layers).get(null) ?? [])
 
+  renderLayers(target, ctx, doc, layers, o, W, H, r, 0)
+  ctx.restore()
+}
+
+/** Composites sibling layers (bottom → top) into `ctx`, recursing into groups. */
+function renderLayers(target: OffscreenCanvas | HTMLCanvasElement, ctx: Ctx2D, doc: ImageDocument, layers: Layer[], o: RenderOptions, W: number, H: number, r: { x: number; y: number; w: number; h: number }, depth: number): void {
   for (const l of layers) {
     if (!l.visible) continue
+    if (l.content.type === 'group') {
+      const kids = tree(doc.layers).get(l.id) ?? []
+      const masked = !!l.mask?.enabled
+      // Pass Through at full opacity: children blend straight into what is below.
+      if (l.blend === 'pass-through' && l.opacity >= 1 && !masked) {
+        renderLayers(target, ctx, doc, kids, o, W, H, r, depth + 1)
+        continue
+      }
+      const gc = poolCanvas(`render.group.${depth}`, W, H)
+      const gg = gc.getContext('2d')!
+      renderLayers(gc, gg, doc, kids, o, W, H, r, depth + 1)
+      if (masked) {
+        gg.save()
+        gg.globalCompositeOperation = 'destination-out'
+        gg.drawImage(hideOnTarget(l, doc, o.xf, W, H, o.stroke?.layerId === l.id && o.stroke.target === 'mask' ? o.stroke : null), 0, 0)
+        gg.restore()
+      }
+      ctx.save()
+      ctx.globalAlpha = l.opacity
+      ctx.globalCompositeOperation = compositeOp(l)
+      ctx.drawImage(gc, 0, 0)
+      ctx.restore()
+      continue
+    }
+
     const op = compositeOp(l)
     const stroke = o.stroke && o.stroke.layerId === l.id ? o.stroke : null
     const maskStroke = stroke?.target === 'mask' ? stroke : null
@@ -316,7 +352,6 @@ export function renderDocument(target: OffscreenCanvas | HTMLCanvasElement, doc:
     ctx.drawImage(tmp, 0, 0)
     ctx.restore()
   }
-  ctx.restore()
 }
 
 /** The full composite at 1:1 in a document-sized canvas. */

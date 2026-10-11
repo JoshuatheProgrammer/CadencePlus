@@ -4,6 +4,8 @@
  */
 import { activeLayer, type ImageDocument, type Rect } from '@core/model'
 import { apply, scaleFromHandle } from '@core/affine'
+import * as E from '@core/edit'
+import { descendants, effectivelyVisible } from '@core/tree'
 import { hexToRgb } from '@core/color'
 import { dragRect, type SelMode } from '@core/selection'
 import { clampZoom, panBy, zoomAt, type View } from '@core/view'
@@ -11,7 +13,7 @@ import { Stroke } from '../../engine/brush'
 import { layerAlphaAt } from '../../engine/pixels'
 import { floatSize } from '../../engine/transform'
 import { commitText, createShape, editText, moveVector, startNewText, textLayerAt } from '../../state/vector-actions'
-import { setView } from '../../state/doc-actions'
+import { edit, setView } from '../../state/doc-actions'
 import * as A from '../../state/image-actions'
 import { get, set, toast, type ToolId } from '../../state/store'
 import { commitTransform, startTransform, transformMatrix, updateTransform } from '../../state/transform-actions'
@@ -93,6 +95,19 @@ const move: Handler = (c, p) => {
   const l = activeLayer(doc)
   if (!l) return null
   if (l.locked) return toast(`“${l.name}” is locked. Unlock it to move it.`, 'warn'), null
+  if (l.content.type === 'group') {
+    const starts = E.positionsOf(doc, descendants(doc.layers, l.id).map((x) => x.id))
+    const gkey = `move:${l.id}:${Date.now()}`
+    return {
+      move(q, e) {
+        let dx = Math.round(q.x - p.x)
+        let dy = Math.round(q.y - p.y)
+        if (e.shiftKey) Math.abs(dx) > Math.abs(dy) ? (dy = 0) : (dx = 0)
+        edit('Move', (x) => E.offsetLayers(x, starts, dx, dy), gkey)
+      },
+      up() {}
+    }
+  }
   if (l.content.type === 'text' || l.content.type === 'shape') {
     const start = l.content.params
     const vkey = `move:${l.id}:${Date.now()}`
@@ -125,7 +140,7 @@ const move: Handler = (c, p) => {
 function topLayerAt(doc: ImageDocument, x: number, y: number): string | null {
   for (let i = doc.layers.length - 1; i >= 0; i--) {
     const l = doc.layers[i]
-    if (!l.visible || l.content.type === 'adjustment') continue
+    if (l.content.type === 'adjustment' || l.content.type === 'group' || !effectivelyVisible(doc, l)) continue
     if (l.content.type === 'fill') return l.id
     const px = layerAlphaAt(doc, l, x, y)
     if (px > 0) return l.id

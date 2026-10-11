@@ -7,7 +7,7 @@ Status legend:
 - 📋 **Planned**: not in the interface yet, or shown disabled with an explanation.
 
 Last verified: 2026-10-10 on Windows 11, Electron 44.7.
-Suites: 44 unit (`npm test`) · 53 end-to-end (`npm run e2e`), all passing.
+Suites: 49 unit (`npm test`) · 58 end-to-end (`npm run e2e`), all passing.
 
 ## Phase 1: core image-editing workflow
 
@@ -58,7 +58,8 @@ Suites: 44 unit (`npm test`) · 53 end-to-end (`npm run e2e`), all passing.
 | New Layer via Copy / Cut (Ctrl+J / Ctrl+Shift+J) | ✅ | |
 | Ctrl+click thumbnail to select layer pixels | ✅ | |
 | Layer masks | ✅ | On any layer type, including adjustment layers. Reveal/Hide All, Reveal/Hide Selection. Paint with black/grey/white (grey half-hides, measured), gradient, fill, blur, invert (Ctrl+I). Disable (Shift+click), view (Alt+click), load as selection (Ctrl+click), Ctrl+\ switches mask/pixels, Apply, Delete. The mask moves with its layer and survives save, merge, crop and transforms. The Paint Bucket and colour adjustments refuse masks with an explanation. |
-| Layer groups, layer styles, smart objects | 📋 | |
+| Layer groups | ✅ | Ctrl+G groups the active layer, Ctrl+Shift+G ungroups, New Group, nesting, collapse/expand, drag layers into and out of groups. Pass Through (default) lets children blend with what is below; any other mode isolates the group (verified with Multiply). Group opacity and masks apply to the whole group; hiding or locking a group covers its children. Move tool and arrow keys move the whole group; Ctrl+E merges it; duplicate/delete include the contents; saved in documents. A Pass Through group below 100% opacity (or with a mask) is composited in isolation. Free Transform of a whole group is not supported yet. |
+| Layer styles (drop shadow, stroke…), smart objects, multi-layer selection | 📋 | |
 
 ### Selections
 | Feature | Status | Notes |

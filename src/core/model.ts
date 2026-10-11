@@ -16,6 +16,8 @@ export const TILE = 256
 export const MAX_DIMENSION = 16384
 
 export type BlendMode =
+  /** Groups only: children blend straight into what is below the group. */
+  | 'pass-through'
   | 'normal'
   | 'darken'
   | 'multiply'
@@ -78,6 +80,8 @@ export type LayerContent =
   | { type: 'text'; text: TextData; params: TransformParams }
   /** A vector shape, placed by `params`. */
   | { type: 'shape'; shape: ShapeData; params: TransformParams }
+  /** A layer group; its children name it as their `parent`. */
+  | { type: 'group'; collapsed: boolean }
 
 export type VectorContent = Extract<LayerContent, { type: 'text' | 'shape' }>
 export const isVector = (c: LayerContent): c is VectorContent => c.type === 'text' || c.type === 'shape'
@@ -109,6 +113,8 @@ export interface Layer {
   blend: BlendMode
   content: LayerContent
   mask?: LayerMask | null
+  /** Group this layer belongs to (null/missing = top level). */
+  parent?: string | null
 }
 
 export interface ImageDocument {

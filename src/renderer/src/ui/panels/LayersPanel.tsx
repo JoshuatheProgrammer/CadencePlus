@@ -1,13 +1,14 @@
 import { memo, useEffect, useRef, useState } from 'react'
 import { ADJUSTMENT_KINDS, ADJUSTMENTS } from '@core/adjustments'
 import { BLEND_MODES, type ImageDocument, type Layer } from '@core/model'
+import { displayRows } from '@core/tree'
 import { renderDocument } from '../../engine/render'
 import { poolCanvas } from '../../engine/tiles'
 import * as A from '../../state/image-actions'
 import { activeDoc, set, useEditor } from '../../state/store'
 import { keysFor } from '../../state/commands'
 import { ScrubNumber, showContextMenu } from '../components'
-import { IconText, IconEye, IconEyeOff, IconFx, IconLock, IconMask, IconNewLayer, IconTrash, IconUnlock, IconFillLayer } from '../icons'
+import { IconChevronDown, IconChevronRight, IconFolder, IconText, IconEye, IconEyeOff, IconFx, IconLock, IconMask, IconNewLayer, IconTrash, IconUnlock, IconFillLayer } from '../icons'
 import { checkerTile } from '../tokens'
 
 const THUMB = 34
@@ -38,6 +39,13 @@ export const LayerThumb = memo(function LayerThumb({ doc, layer }: { doc: ImageD
     return (
       <div className="layer-thumb adj" title={ADJUSTMENTS[layer.content.adjustment.kind].label}>
         <IconFx size={16} />
+      </div>
+    )
+  }
+  if (layer.content.type === 'group') {
+    return (
+      <div className="layer-thumb adj type" title="Group">
+        <IconFolder size={18} />
       </div>
     )
   }
@@ -75,15 +83,17 @@ const MaskThumb = memo(function MaskThumb({ doc, layer }: { doc: ImageDocument; 
   return <canvas ref={ref} className="layer-thumb" style={{ width: THUMB, height: THUMB }} />
 }, (a, b) => a.layer.mask === b.layer.mask && a.layer.id === b.layer.id && a.doc.width === b.doc.width && a.doc.height === b.doc.height)
 
-function LayerRow({ doc, layer, active, onDragStart, renaming, setRenaming }: { doc: ImageDocument; layer: Layer; active: boolean; onDragStart: (e: React.PointerEvent, id: string) => void; renaming: boolean; setRenaming: (id: string | null) => void }) {
+function LayerRow({ doc, layer, depth, active, onDragStart, renaming, setRenaming, dropInto }: { doc: ImageDocument; layer: Layer; depth: number; active: boolean; onDragStart: (e: React.PointerEvent, id: string) => void; renaming: boolean; setRenaming: (id: string | null) => void; dropInto: boolean }) {
   const maskView = useEditor((s) => s.maskView)
   const onMask = active && doc.target === 'mask' && !!layer.mask
   const [name, setName] = useState(layer.name)
   useEffect(() => setName(layer.name), [layer.name])
-  const kind = { fill: 'Fill layer', adjustment: 'Adjustment layer', raster: 'Pixel layer', text: 'Type layer', shape: 'Shape layer' }[layer.content.type]
+  const kind = { fill: 'Fill layer', adjustment: 'Adjustment layer', raster: 'Pixel layer', text: 'Type layer', shape: 'Shape layer', group: 'Group' }[layer.content.type]
+  const isGroup = layer.content.type === 'group'
+  const collapsed = layer.content.type === 'group' && layer.content.collapsed
   return (
     <div
-      className={`layer-row${active ? ' active' : ''}${layer.visible ? '' : ' hidden'}`}
+      className={`layer-row${active ? ' active' : ''}${layer.visible ? '' : ' hidden'}${isGroup ? ' group' : ''}${dropInto ? ' drop-into' : ''}`}
       data-layer={layer.id}
       onPointerDown={(e) => {
         if (e.button !== 0 || renaming) return
@@ -99,8 +109,9 @@ function LayerRow({ doc, layer, active, onDragStart, renaming, setRenaming }: { 
       onContextMenu={(e) => {
         A.selectLayer(layer.id)
         showContextMenu(e, [
-          { label: 'Rename Layer…', action: () => setRenaming(layer.id) },
-          { label: 'Duplicate Layer', action: A.duplicateLayer },
+          { label: isGroup ? 'Rename Group…' : 'Rename Layer…', action: () => setRenaming(layer.id) },
+          { label: isGroup ? 'Duplicate Group' : 'Duplicate Layer', action: A.duplicateLayer },
+          ...(isGroup ? [{ label: 'Ungroup Layers', action: A.ungroupActive, kbd: keysFor('layer.ungroup')[0] }] : [{ label: 'Group Layer', action: A.groupActive, kbd: keysFor('layer.group')[0] }]),
           { label: 'Delete Layer', action: () => A.deleteLayer(layer.id), disabled: layer.locked || doc.layers.length < 2 },
           { sep: true },
           { label: 'Select Pixels', action: () => A.selectLayerPixels(layer.id), disabled: layer.content.type === 'adjustment' },
@@ -119,7 +130,7 @@ function LayerRow({ doc, layer, active, onDragStart, renaming, setRenaming }: { 
                 { label: 'Add Layer Mask (Reveal Selection)', action: () => A.addLayerMask('revealSelection'), disabled: !doc.selection }
               ]),
           { sep: true },
-          { label: 'Merge Down', action: A.mergeDown, kbd: keysFor('layer.mergeDown')[0], disabled: doc.layers[0].id === layer.id },
+          { label: isGroup ? 'Merge Group' : 'Merge Down', action: A.mergeDown, kbd: keysFor('layer.mergeDown')[0] },
           { label: 'Merge Visible', action: A.mergeVisible, kbd: keysFor('layer.mergeVisible')[0] },
           { label: 'Flatten Image', action: A.flattenImage }
         ])
@@ -129,6 +140,14 @@ function LayerRow({ doc, layer, active, onDragStart, renaming, setRenaming }: { 
       <button className={`eye${layer.visible ? '' : ' off'}`} title={layer.visible ? 'Hide layer' : 'Show layer'} onClick={() => A.setLayerVisible(layer.id, !layer.visible)}>
         {layer.visible ? <IconEye /> : <IconEyeOff />}
       </button>
+      {depth > 0 && <span className="indent" style={{ width: depth * 16 }} />}
+      {isGroup ? (
+        <button className="chevron" title={collapsed ? 'Expand group' : 'Collapse group'} onClick={() => A.setCollapsed(layer.id, !collapsed)}>
+          {collapsed ? <IconChevronRight size={12} /> : <IconChevronDown size={12} />}
+        </button>
+      ) : depth > 0 ? (
+        <span className="chevron-space" />
+      ) : null}
       <span
         onPointerDown={(e) => {
           if (e.ctrlKey && e.button === 0) {
@@ -199,51 +218,60 @@ function LayerRow({ doc, layer, active, onDragStart, renaming, setRenaming }: { 
   )
 }
 
+type Drop = { id: string; where: 'above' | 'below' | 'into'; row: string; y: number; indent: number }
+
 export function LayersPanel() {
   const doc = useEditor((s) => s.docs.find((d) => d.id === s.activeId)?.history.present ?? null)
   const [renaming, setRenaming] = useState<string | null>(null)
-  const [drop, setDrop] = useState<{ id: string; index: number; y: number } | null>(null)
+  const [drop, setDrop] = useState<Drop | null>(null)
   const listRef = useRef<HTMLDivElement>(null)
 
   if (!doc) return <div className="panel"><div className="empty-hint">Open or create a document to see its layers.</div></div>
   const active = doc.layers.find((l) => l.id === doc.activeLayerId) ?? null
-  const top = [...doc.layers].reverse()
+  const rows = displayRows(doc.layers)
 
   const startDrag = (e: React.PointerEvent, id: string) => {
     const startY = e.clientY
     let moved = false
-    let target: { index: number; y: number } | null = null
+    let target: Drop | null = null
     const move = (ev: PointerEvent) => {
       if (!moved && Math.abs(ev.clientY - startY) < 5) return
       moved = true
       const list = listRef.current
       if (!list) return
-      const rows = [...list.querySelectorAll<HTMLElement>('.layer-row')]
+      const els = [...list.querySelectorAll<HTMLElement>('.layer-row')]
       const lr = list.getBoundingClientRect()
-      // Gap index in top → bottom order
-      let gap = rows.length
-      for (let i = 0; i < rows.length; i++) {
-        const r = rows[i].getBoundingClientRect()
-        if (ev.clientY < r.top + r.height / 2) {
-          gap = i
-          break
-        }
+      const current = displayRows(activeDoc()!.layers)
+      let found: Drop | null = null
+      for (let i = 0; i < els.length; i++) {
+        const r = els[i].getBoundingClientRect()
+        if (ev.clientY > r.bottom && i < els.length - 1) continue
+        const row = current[i]
+        if (!row) break
+        const f = Math.min(1, Math.max(0, (ev.clientY - r.top) / r.height))
+        const grp = row.layer.content.type === 'group'
+        const open = grp && !(row.layer.content as { collapsed: boolean }).collapsed
+        // Groups take drops in their middle (or anywhere below the top quarter when expanded).
+        const where: Drop['where'] = grp && row.layer.id !== id && (open ? f > 0.25 : f > 0.25 && f < 0.75) ? 'into' : f < 0.5 ? 'above' : 'below'
+        const y = (where === 'below' ? r.bottom : r.top) - lr.top + list.scrollTop
+        found = { id, where, row: row.layer.id, y, indent: 4 + row.depth * 16 }
+        break
       }
-      const y = gap < rows.length ? rows[gap].getBoundingClientRect().top - lr.top + list.scrollTop : rows.length ? rows[rows.length - 1].getBoundingClientRect().bottom - lr.top + list.scrollTop : 0
-      target = { index: gap, y }
-      setDrop({ id, ...target })
+      target = found
+      setDrop(found)
     }
     const up = () => {
       window.removeEventListener('pointermove', move)
       window.removeEventListener('pointerup', up)
       setDrop(null)
       const d = activeDoc()
-      if (!moved || !target || !d) return
-      const from = d.layers.findIndex((l) => l.id === id)
-      // Convert top-down gap to a bottom-up index after removal.
-      let to = d.layers.length - target.index
-      if (from < to) to -= 1
-      if (to !== from) A.moveLayerTo(id, to)
+      if (!moved || !target || !d || target.row === id) return
+      const rowLayer = d.layers.find((l) => l.id === target!.row)!
+      // Flat positions are counted without the dragged layer.
+      const without = d.layers.filter((l) => l.id !== id)
+      const ri = without.findIndex((l) => l.id === rowLayer.id)
+      if (target.where === 'into') A.moveLayerInto(id, rowLayer.id, ri)
+      else A.moveLayerInto(id, rowLayer.parent ?? null, target.where === 'above' ? ri + 1 : ri)
     }
     window.addEventListener('pointermove', move)
     window.addEventListener('pointerup', up)
@@ -259,6 +287,7 @@ export function LayersPanel() {
           title="Blend mode"
           style={{ flex: 1, minWidth: 0 }}
         >
+          {active?.content.type === 'group' && <option value="pass-through">Pass Through</option>}
           {BLEND_MODES.map((m, i) =>
             m ? (
               <option key={m.id} value={m.id}>
@@ -290,10 +319,20 @@ export function LayersPanel() {
         </button>
       </div>
       <div className="panel-body layer-list" ref={listRef} style={{ position: 'relative' }}>
-        {top.map((l) => (
-          <LayerRow key={l.id} doc={doc} layer={l} active={l.id === doc.activeLayerId} onDragStart={startDrag} renaming={renaming === l.id} setRenaming={setRenaming} />
+        {rows.map(({ layer: l, depth }) => (
+          <LayerRow
+            key={l.id}
+            doc={doc}
+            layer={l}
+            depth={depth}
+            active={l.id === doc.activeLayerId}
+            onDragStart={startDrag}
+            renaming={renaming === l.id}
+            setRenaming={setRenaming}
+            dropInto={drop?.where === 'into' && drop.row === l.id}
+          />
         ))}
-        {drop && <div className="layer-drop" style={{ top: drop.y - 1 }} />}
+        {drop && drop.where !== 'into' && <div className="layer-drop" style={{ top: drop.y - 1, left: drop.indent }} />}
       </div>
       <div className="panel-footer">
         <button
@@ -315,6 +354,9 @@ export function LayersPanel() {
           onClick={(e) => A.addLayerMask(e.altKey ? 'hideAll' : doc.selection ? 'revealSelection' : 'revealAll')}
         >
           <IconMask />
+        </button>
+        <button className="icon-btn" title="New group (Ctrl+G groups the active layer)" onClick={A.newGroup}>
+          <IconFolder />
         </button>
         <button className="icon-btn" title="New fill layer (foreground colour)" onClick={() => A.newFillLayer()}>
           <IconFillLayer />
