@@ -7,6 +7,7 @@ import * as D from './doc-actions'
 import * as A from './image-actions'
 import { activeDoc, activeDocState, get, set, setToolOption, toast, type PanelId, type ToolId } from './store'
 import { TOOL_LIST } from './tools'
+import { PROOF_LABELS } from '../engine/ops'
 import { docColor, type DocColor } from '@core/model'
 import * as T from './transform-actions'
 import { commitText } from './vector-actions'
@@ -63,7 +64,7 @@ export const COMMANDS: Command[] = [
 
   // Edit
   { id: 'edit.undo', label: 'Undo', keys: ['Ctrl+Z'], run: () => (T.transforming() ? T.cancelTransform() : D.undo()), enabled: () => T.transforming() || canUndo() },
-  { id: 'edit.redo', label: 'Redo', keys: ['Ctrl+Shift+Z', 'Ctrl+Y'], run: D.redo, enabled: canRedo },
+  { id: 'edit.redo', label: 'Redo', keys: ['Ctrl+Shift+Z'], run: D.redo, enabled: canRedo },
   { id: 'edit.cut', label: 'Cut', keys: ['Ctrl+X'], run: () => void A.copy(false, true), enabled: hasDoc },
   { id: 'edit.copy', label: 'Copy', keys: ['Ctrl+C'], run: () => void A.copy(false), enabled: hasDoc },
   { id: 'edit.copyMerged', label: 'Copy Merged', keys: ['Ctrl+Shift+C'], run: () => void A.copy(true), enabled: hasDoc },
@@ -149,6 +150,9 @@ export const COMMANDS: Command[] = [
   { id: 'view.fit', label: 'Fit on Screen', keys: ['Ctrl+0'], run: D.fitOnScreen, enabled: hasDoc },
   { id: 'view.fill', label: 'Fill Screen', run: D.fillScreen, enabled: hasDoc },
   { id: 'view.actual', label: '100%', keys: ['Ctrl+1'], run: D.actualPixels, enabled: hasDoc },
+  { id: 'view.proofColors', label: 'Proof Colors', keys: ['Ctrl+Y'], run: () => set((s) => ({ proofOn: !s.proofOn })), enabled: hasDoc },
+  { id: 'view.gamutWarning', label: 'Gamut Warning', keys: ['Ctrl+Shift+Y'], run: () => set((s) => ({ gamutWarning: !s.gamutWarning })), enabled: hasDoc },
+  ...(['srgb', 'gray', 'protanopia', 'deuteranopia', 'tritanopia'] as const).map((k) => ({ id: `view.proof.${k}`, label: PROOF_LABELS[k], run: () => set({ proofSetup: k, proofOn: true }), enabled: hasDoc })),
   { id: 'view.rulers', label: 'Rulers', keys: ['Ctrl+R'], run: () => set((s) => ({ showRulers: !s.showRulers })) },
   { id: 'view.pixelGrid', label: 'Pixel Grid', run: () => set((s) => ({ showPixelGrid: !s.showPixelGrid })) },
   { id: 'view.nextDoc', label: 'Next Document', keys: ['Ctrl+Tab'], run: () => cycleDoc(1), enabled: hasDoc },

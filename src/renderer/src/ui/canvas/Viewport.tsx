@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { docColor } from '@core/model'
 import { fitView, panBy, zoomAt, type View } from '@core/view'
 import { docRectOnTarget, renderDocument } from '../../engine/render'
+import { drawProofed } from '../../engine/ops'
 import { poolCanvas } from '../../engine/tiles'
 import { commitCrop } from '../../state/commands'
 import { openPaths, setView } from '../../state/doc-actions'
@@ -38,6 +39,9 @@ export function Viewport() {
   const filterPreview = useEditor((s) => s.filterPreview)
   const crop = useEditor((s) => s.crop)
   const maskView = useEditor((s) => s.maskView)
+  const proofOn = useEditor((s) => s.proofOn)
+  const proofSetup = useEditor((s) => s.proofSetup)
+  const gamutWarning = useEditor((s) => s.gamutWarning)
   const transform = useEditor((s) => (s.transform && s.transform.fs.docId === s.activeId ? s.transform : null))
   const [tfCursor, setTfCursor] = useState<string | null>(null)
   const showGrid = useEditor((s) => s.showPixelGrid)
@@ -94,7 +98,9 @@ export function Viewport() {
       ctx.fillRect(r.x, r.y, r.w, r.h)
       const comp = poolCanvas('view.composite', W, H)
       renderDocument(comp, doc, { xf, width: W, height: H, stroke, filterPreview, maskView, float: transform ? { fs: transform.fs, m: transformMatrix(transform), params: transform.params } : null })
-      ctx.drawImage(comp, 0, 0)
+      // Soft proof / gamut warning are applied to the display only.
+      const proof = proofOn ? proofSetup : null
+      if (!(proof || gamutWarning) || !drawProofed(ctx, comp, proof, gamutWarning, screenSpace)) ctx.drawImage(comp, 0, 0)
       // Pixel grid at high zoom
       if (showGrid && view.zoom >= 8) {
         ctx.save()
@@ -124,7 +130,7 @@ export function Viewport() {
       ctx.strokeRect(r.x - 0.5, r.y - 0.5, r.w + 1, r.h + 1)
     })
     return () => cancelAnimationFrame(raf)
-  }, [doc, view, size, stroke, stroke?.rev, filterPreview, showGrid, maskView, transform, screenSpace])
+  }, [doc, view, size, stroke, stroke?.rev, filterPreview, showGrid, maskView, transform, screenSpace, proofOn, proofSetup, gamutWarning])
 
   // Overlay render (ants animate while a selection exists)
   const frameRef = useRef(0)

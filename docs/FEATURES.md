@@ -7,7 +7,7 @@ Status legend:
 - 📋 **Planned**: not in the interface yet, or shown disabled with an explanation.
 
 Last verified: 2026-10-10 on Windows 11, Electron 44.7.
-Suites: 49 unit (`npm test`) · 61 end-to-end (`npm run e2e`), all passing.
+Suites: 58 unit (`npm test`) · 65 end-to-end (`npm run e2e`), all passing.
 
 ## Phase 1: core image-editing workflow
 
@@ -33,7 +33,12 @@ Suites: 49 unit (`npm test`) · 61 end-to-end (`npm run e2e`), all passing.
 | Export PNG / JPEG / WebP | ✅ | PNG export matches the composite exactly. JPEG gets a white matte. Size estimate shown before export. |
 | Unsaved-changes prompt (close document, close window) | 🟡 | Implemented. The window-close path is not covered by an automated test. |
 | Autosave and crash recovery | ✅ | Every 60 s and on window blur, unsaved documents are copied to the recovery folder (never over your file). Copies are removed on save, close or discard; leftovers are offered at start-up and reopen as unsaved. Tested by killing the process tree and relaunching. |
-| Colour management (ICC, Display P3, soft-proofing), 16-bit/float | 📋 | Pixels are 8-bit and treated as sRGB; the Properties panel says so. |
+| 16 bits/channel | ✅ | Documents can be 16-bit (half-float) end to end: tiles, compositing, blend modes, filters, Levels/Curves (half-float GPU path) and export. Verified: a 1024-px gradient keeps 1024 levels (8-bit: 256). Image → Mode switches 8 ↔ 16. |
+| Working colour spaces: sRGB and Display P3 | ✅ | Chosen at New Document or via Image → Convert to Profile (colour-managed, undoable). P3-only colours survive (P3 green stays 0,1,0); converting to sRGB clips them. The screen canvas uses the document's space. |
+| ICC-aware import | ✅ | Own PNG decoder keeps 16-bit PNGs at 16 bits. Embedded matrix/curve ICC profiles (Adobe RGB, ProPhoto, P3, camera/monitor profiles) in PNG, JPEG and WebP are converted into sRGB, or Display P3 when the source gamut is wider; you get a note saying what happened. Lookup-table (A2B) profiles fall back to Chromium's own conversion to sRGB. |
+| Profile-tagged export, 16-bit PNG | ✅ | P3 documents export with an embedded profile; 16-bit documents can export 16-bit PNGs; projects store 16-bit/P3 tiles losslessly. |
+| Soft proofing and gamut warning | ✅ | View → Proof Setup (sRGB, grayscale, protanopia/deuteranopia/tritanopia), Proof Colors (Ctrl+Y), Gamut Warning (Ctrl+Shift+Y) for colours outside sRGB. Display only (verified the document is untouched). Redo is Ctrl+Shift+Z (Ctrl+Y is Proof Colors, as in Photoshop). |
+| CMYK, Lab, 32-bit float/HDR | 📋 | |
 
 ### Viewing
 | Feature | Status | Notes |
@@ -111,7 +116,7 @@ Suites: 49 unit (`npm test`) · 61 end-to-end (`npm run e2e`), all passing.
 | Phase | Scope |
 |---|---|
 | 2 ✅ | Layer masks and groups, Free Transform, move selected pixels, Type tool, shapes, clone stamp/healing, Levels/Curves (WebGL), autosave/recovery, rebindable shortcuts |
-| 3 | Colour management: 16-bit/float pipeline, ICC profiles, soft-proofing |
+| 3 ✅ | Colour management: 16-bit/float pipeline, ICC profiles, soft-proofing |
 | 4 | PSD import/export, TIFF, camera RAW |
 | 5 | Monorepo with Cadence (shared `ui/` and `core/` packages) |
 | 6 | Retouching tools and filters: dodge/burn, sponge, smudge, blur/sharpen tools, history brush, polygonal lasso, quick mask, Color Range, Unsharp Mask, noise, motion blur, high pass |

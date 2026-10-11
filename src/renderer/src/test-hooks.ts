@@ -73,6 +73,17 @@ export function installTestHooks(): void {
       for (let i = 0; i < x1 - x0; i++) s.add(d[i * 4])
       return s.size
     },
+    /** What the viewport shows at document point (x, y): RGBA from the screen canvas. */
+    screenPixel(x: number, y: number): number[] {
+      const s = get()
+      const v = s.docs.find((d) => d.id === s.activeId)?.view
+      const c = document.querySelector('.viewport canvas') as HTMLCanvasElement | null
+      if (!v || !c) return []
+      const dpr = window.devicePixelRatio || 1
+      const sx = Math.round(((x - v.cx) * v.zoom + s.viewport.w / 2) * dpr)
+      const sy = Math.round(((y - v.cy) * v.zoom + s.viewport.h / 2) * dpr)
+      return Array.from(c.getContext('2d')!.getImageData(sx, sy, 1, 1).data)
+    },
     /** RGBA of the flattened active document at (x, y). */
     pixel(x: number, y: number): number[] {
       const doc = get().docs.find((d) => d.id === get().activeId)?.history.present

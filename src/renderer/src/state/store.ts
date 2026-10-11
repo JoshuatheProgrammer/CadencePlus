@@ -13,6 +13,7 @@ import type { TransformParams } from '@core/affine'
 import { DEFAULT_TEXT_STYLE, type ShapeKind, type TextStyle } from '@core/vector'
 import type { FilterPreview, StrokePreview } from '../engine/render'
 import type { FloatState } from '../engine/transform'
+import type { ProofKind } from '../engine/ops'
 
 export type ToolId = 'move' | 'marquee' | 'lasso' | 'wand' | 'crop' | 'eyedropper' | 'brush' | 'eraser' | 'clone' | 'heal' | 'bucket' | 'gradient' | 'text' | 'shape' | 'hand' | 'zoom'
 
@@ -118,6 +119,10 @@ export interface EditorState {
   /** Clone Stamp / Healing Brush source (Alt+click) and the offset in use. */
   cloneSource: { docId: string; x: number; y: number } | null
   cloneOffset: { docId: string; dx: number; dy: number } | null
+  /** Soft proofing (display only): the proof space, whether it is shown, and the gamut warning. */
+  proofSetup: ProofKind
+  proofOn: boolean
+  gamutWarning: boolean
   /** User keyboard shortcuts: command id → keys (replaces the default list). */
   keyOverrides: Record<string, string[]>
   /** Free Transform / selection move in progress. */
@@ -156,7 +161,10 @@ export const useEditor = create<EditorState>(() => ({
   textEdit: null,
   cloneSource: null,
   cloneOffset: null,
-  keyOverrides: {}
+  keyOverrides: {},
+  proofSetup: 'srgb',
+  proofOn: false,
+  gamutWarning: false
 }))
 
 export const get = useEditor.getState

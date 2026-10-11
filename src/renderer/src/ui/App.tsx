@@ -215,6 +215,13 @@ function menus(): Record<string, MenuEntry[]> {
       { cmd: 'view.fill' },
       { cmd: 'view.actual' },
       { sep: true },
+      {
+        label: 'Proof Setup',
+        submenu: () => (['srgb', 'gray', 'protanopia', 'deuteranopia', 'tritanopia'] as const).map((k) => ({ cmd: `view.proof.${k}`, checked: get().proofSetup === k }))
+      },
+      { cmd: 'view.proofColors', checked: s.proofOn },
+      { cmd: 'view.gamutWarning', checked: s.gamutWarning },
+      { sep: true },
       { cmd: 'view.rulers', checked: s.showRulers },
       { cmd: 'view.pixelGrid', checked: s.showPixelGrid }
     ],

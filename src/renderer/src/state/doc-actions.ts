@@ -11,6 +11,7 @@ import { collectMaskIds } from '@core/selection'
 import { clampZoom, fillView, fitView, formatZoom, nextZoomStep, type View } from '@core/view'
 import { baseName, decodeProject, encodeProject, exportImage, extOf, importImage, type ExportFormat, type ExportOptions } from '../engine/io'
 import { withFormat } from '../engine/format'
+import { PROOF_LABELS } from '../engine/ops'
 import { collectGarbage, solidTiles } from '../engine/tiles'
 import { activeDocState, confirm, get, isDirty, set, toast, updateDocState, type DocState } from './store'
 
@@ -350,5 +351,7 @@ export function titleFor(ds: DocState | null): string {
   const layer = doc.layers.find((l) => l.id === doc.activeLayerId)
   const bits = docColor(doc).depth
   const part = doc.target === 'mask' && layer?.mask ? `${layer.name}, Layer Mask/${bits}` : `${layer?.name ?? '—'}, RGB/${bits}`
-  return `${displayName(ds)}${isDirty(ds) ? ' •' : ''} @ ${formatZoom(ds.view?.zoom ?? 1)} (${part})`
+  const s = get()
+  const proof = s.proofOn ? `/${PROOF_LABELS[s.proofSetup]}` : ''
+  return `${displayName(ds)}${isDirty(ds) ? ' •' : ''} @ ${formatZoom(ds.view?.zoom ?? 1)} (${part}${proof})`
 }
