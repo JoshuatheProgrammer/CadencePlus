@@ -398,7 +398,7 @@ function ExportDialog() {
       live = false
       clearTimeout(t)
     }
-  }, [format, quality])
+  }, [format, quality, sixteen])
   const d = activeDoc()!
   const ok = () => {
     close()
@@ -426,8 +426,10 @@ function ExportDialog() {
           <option value="png">PNG — lossless, keeps transparency</option>
           <option value="jpeg">JPEG — smaller, no transparency</option>
           <option value="webp">WebP — lossy, keeps transparency</option>
+          <option value="tiff">TIFF — lossless, uncompressed</option>
+          <option value="psd">Photoshop (PSD) — keeps layers</option>
         </select>
-        {format !== 'png' && (
+        {(format === 'jpeg' || format === 'webp') && (
           <>
             <label>Quality</label>
             <SliderField label="" value={quality} min={1} max={100} unit="%" width={180} onChange={setQuality} />
@@ -435,9 +437,10 @@ function ExportDialog() {
         )}
         <label>Image</label>
         <span className="note">
-          {d.width} × {d.height} px · all visible layers, flattened{format === 'jpeg' ? ' · transparency becomes white' : ''}
+          {d.width} × {d.height} px ·{' '}
+          {format === 'psd' ? 'layers, groups, masks and adjustment layers; type and shapes as pixels' : `all visible layers, flattened${format === 'jpeg' ? ' · transparency becomes white' : ''}`}
         </span>
-        {format === 'png' && color.depth === 16 && (
+        {(format === 'png' || format === 'tiff') && color.depth === 16 && (
           <>
             <label>Bit depth</label>
             <label style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--c-text)' }}>
@@ -447,8 +450,8 @@ function ExportDialog() {
         )}
         <label>Colour</label>
         <span className="note">
-          {color.space === 'display-p3' ? 'Display P3, profile embedded' : 'sRGB'}
-          {format !== 'png' || color.depth === 8 || !sixteen ? ' · 8 bits/channel' : ' · 16 bits/channel'}
+          {format === 'psd' ? (color.space === 'display-p3' ? 'converted to sRGB' : 'sRGB') : color.space === 'display-p3' ? 'Display P3, profile embedded' : 'sRGB'}
+          {(format !== 'png' && format !== 'tiff') || color.depth === 8 || !sixteen ? ' · 8 bits/channel' : ' · 16 bits/channel'}
         </span>
         <label>File size</label>
         <span className="note">{estimate}</span>

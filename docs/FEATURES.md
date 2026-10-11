@@ -28,9 +28,12 @@ Suites: 58 unit (`npm test`) · 65 end-to-end (`npm run e2e`), all passing.
 |---|---|---|
 | New document (presets, size, resolution, background) | ✅ | Max 16,384 px per side (Chromium canvas limit). |
 | Open PNG, JPEG, WebP, AVIF, GIF, BMP | ✅ | Dialog, drag-and-drop, recent files, command line. GIF opens the first frame. |
-| PSD, TIFF, camera RAW | 📋 | Needs libraries (e.g. ag-psd, LibRaw); licences to check. |
+| Open Photoshop (PSD) | ✅ | Via ag-psd (MIT). Layers, groups (incl. Pass Through), layer masks, blend modes, opacity, visibility, and Brightness/Contrast, Levels, Curves, Hue/Saturation, Invert, Black & White adjustment layers. 16-bit PSDs open at 16 bits. Anything not carried over (layer styles, clipping masks, live type, smart objects, vector masks, other adjustments, CMYK/Lab) is named in a note when the file opens. |
+| Export Photoshop (PSD) | ✅ | Layered: groups, masks, blend modes, opacity and the adjustment layers above; type, shapes and fill layers are written as pixels. 8 bits/channel sRGB (16-bit and P3 documents are converted, with a note). Verified by reading the file back with ag-psd and reopening it in Cadence+. |
+| TIFF import / export | ✅ | Via UTIF (MIT) for reading: first page, 8 or 16 bits/channel, RGB or grey, alpha, embedded ICC profile (colour-managed like PNG). Export is our own uncompressed RGBA writer, 8 or 16 bits/channel, with an embedded profile for P3 documents. Verified: a 1024-level 16-bit ramp survives import → export → reopen. Compressed TIFFs (LZW, Deflate, PackBits) decode through UTIF but are not covered by tests. |
+| Camera RAW | 🟡 | Developed with LibRaw (libraw-wasm; LibRaw is LGPL-2.1/CDDL, loaded as a separate replaceable WebAssembly file): camera white balance, AHD demosaic, no auto-brightening, 16 bits/channel, linear Adobe RGB converted by our CMM into Display P3. DNG, CR2/CR3, NEF, ARW, RAF, ORF, RW2, PEF and others. Verified exactly on a synthetic linear DNG (18% grey → 0.461 sRGB); no real camera files were available to test with. No develop controls yet (exposure, WB, etc. — use adjustment layers after opening). |
 | `.cadenceimg` document format | ✅ | Versioned header + PNG tiles. Save/reopen is pixel-identical with layers, blend modes, opacity, fill and adjustment layers, and the selection. Atomic writes with a `.bak`. Newer formats are refused with a clear message. |
-| Export PNG / JPEG / WebP | ✅ | PNG export matches the composite exactly. JPEG gets a white matte. Size estimate shown before export. |
+| Export PNG / JPEG / WebP / TIFF / PSD | ✅ | PNG export matches the composite exactly. JPEG gets a white matte. Size estimate shown before export. |
 | Unsaved-changes prompt (close document, close window) | 🟡 | Implemented. The window-close path is not covered by an automated test. |
 | Autosave and crash recovery | ✅ | Every 60 s and on window blur, unsaved documents are copied to the recovery folder (never over your file). Copies are removed on save, close or discard; leftovers are offered at start-up and reopen as unsaved. Tested by killing the process tree and relaunching. |
 | 16 bits/channel | ✅ | Documents can be 16-bit (half-float) end to end: tiles, compositing, blend modes, filters, Levels/Curves (half-float GPU path) and export. Verified: a 1024-px gradient keeps 1024 levels (8-bit: 256). Image → Mode switches 8 ↔ 16. |
@@ -117,7 +120,7 @@ Suites: 58 unit (`npm test`) · 65 end-to-end (`npm run e2e`), all passing.
 |---|---|
 | 2 ✅ | Layer masks and groups, Free Transform, move selected pixels, Type tool, shapes, clone stamp/healing, Levels/Curves (WebGL), autosave/recovery, rebindable shortcuts |
 | 3 ✅ | Colour management: 16-bit/float pipeline, ICC profiles, soft-proofing |
-| 4 | PSD import/export, TIFF, camera RAW |
+| 4 ✅ | PSD import/export, TIFF, camera RAW (RAW 🟡: verified on synthetic DNG only) |
 | 5 | Monorepo with Cadence (shared `ui/` and `core/` packages) |
 | 6 | Retouching tools and filters: dodge/burn, sponge, smudge, blur/sharpen tools, history brush, polygonal lasso, quick mask, Color Range, Unsharp Mask, noise, motion blur, high pass |
 | 7 | Layer styles (drop shadow, stroke, glows, colour overlay), multi-layer selection, export presets (scale, format batches) |

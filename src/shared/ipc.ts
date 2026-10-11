@@ -1,7 +1,9 @@
 /** The typed `window.cadencePlus` API exposed by the preload script. */
 
 /** Image formats Chromium decodes natively (8-bit). PSD/TIFF/RAW need libraries later. */
-export const IMAGE_EXTENSIONS = ['png', 'jpg', 'jpeg', 'webp', 'avif', 'gif', 'bmp']
+export const IMAGE_EXTENSIONS = ['png', 'jpg', 'jpeg', 'webp', 'avif', 'gif', 'bmp', 'tif', 'tiff', 'psd']
+/** Camera RAW formats (developed with LibRaw). Keep in sync with engine/io RAW_EXTENSIONS. */
+export const RAW_FILE_EXTENSIONS = ['dng', 'cr2', 'cr3', 'crw', 'nef', 'nrw', 'arw', 'srf', 'sr2', 'raf', 'orf', 'rw2', 'pef', 'srw', 'x3f', '3fr', 'iiq', 'erf', 'kdc', 'mrw']
 
 export interface RecoveryMeta {
   name: string

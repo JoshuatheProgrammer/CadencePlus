@@ -22,6 +22,9 @@ export const IMAGE_MIME: Record<string, string> = {
   bmp: 'image/bmp'
 }
 
+/** Camera RAW extensions LibRaw can develop. */
+export const RAW_EXTENSIONS = ['dng', 'cr2', 'cr3', 'crw', 'nef', 'nrw', 'arw', 'srf', 'sr2', 'raf', 'orf', 'rw2', 'pef', 'srw', 'x3f', '3fr', 'iiq', 'erf', 'kdc', 'mrw']
+
 export const extOf = (path: string): string => /\.([^.\\/]+)$/.exec(path)?.[1]?.toLowerCase() ?? ''
 export const baseName = (path: string): string => path.replace(/^.*[\\/]/, '').replace(/\.[^.]+$/, '')
 
@@ -144,6 +147,9 @@ function manage(rgba: Float32Array, profile: IccProfile | null, fallback: DocCol
  * else takes Chromium's 8-bit sRGB decode.
  */
 export async function importImage(bytes: Uint8Array, ext: string, name: string): Promise<ImportResult> {
+  if (ext === 'psd' || ext === 'psb') return (await import('./formats')).importPsd(bytes, name)
+  if (ext === 'tif' || ext === 'tiff') return (await import('./formats')).importTiff(bytes, name)
+  if (RAW_EXTENSIONS.includes(ext)) return (await import('./formats')).importRaw(bytes, name)
   if (ext === 'png') {
     const info = await pngInfo(bytes).catch(() => null)
     const profile = info?.icc ? tryParse(info.icc.profile) : null
@@ -264,12 +270,14 @@ export async function decodeProject(bytes: Uint8Array): Promise<ImageDocument> {
 // Export
 // ---------------------------------------------------------------------------
 
-export type ExportFormat = 'png' | 'jpeg' | 'webp'
+export type ExportFormat = 'png' | 'jpeg' | 'webp' | 'tiff' | 'psd'
+
+export const EXPORT_EXTENSION: Record<ExportFormat, string> = { png: 'png', jpeg: 'jpg', webp: 'webp', tiff: 'tif', psd: 'psd' }
 
 export interface ExportOptions {
   /** JPEG has no alpha: transparency becomes this colour. */
   matte?: string
-  /** 16-bit documents: write a 16 bits/channel PNG. */
+  /** 16-bit documents: write 16 bits/channel (PNG, TIFF). */
   sixteenBit?: boolean
 }
 
@@ -278,6 +286,17 @@ export interface ExportOptions {
  * carry an embedded profile).
  */
 export async function exportImage(doc: ImageDocument, format: ExportFormat, quality: number, opts: ExportOptions = {}): Promise<Uint8Array> {
+  return (await exportFile(doc, format, quality, opts)).bytes
+}
+
+/** Like exportImage, plus a note on anything the format could not carry (PSD). */
+export async function exportFile(doc: ImageDocument, format: ExportFormat, quality: number, opts: ExportOptions = {}): Promise<{ bytes: Uint8Array; note: string | null }> {
+  if (format === 'psd') return (await import('./formats')).exportPsd(doc)
+  if (format === 'tiff') return { bytes: await (await import('./formats')).exportTiff(doc, !!opts.sixteenBit), note: null }
+  return { bytes: await encodeFlat(doc, format, quality, opts), note: null }
+}
+
+async function encodeFlat(doc: ImageDocument, format: 'png' | 'jpeg' | 'webp', quality: number, opts: ExportOptions): Promise<Uint8Array> {
   const f = docColor(doc)
   const src = withFormat(f, () => {
     const comp = renderComposite(doc, 'export')

@@ -9,6 +9,8 @@ import { mkdirSync, mkdtempSync, existsSync, statSync, readFileSync, writeFileSy
 import { join, resolve } from 'node:path'
 import { tmpdir } from 'node:os'
 import { execSync } from 'node:child_process'
+import { initializeCanvas, readPsd } from 'ag-psd'
+import { makeDng, makePsd, makeTiff16, makeTiff8 } from './fixtures.mjs'
 
 const root = resolve(import.meta.dirname, '..')
 const work = mkdtempSync(join(tmpdir(), 'cplus-e2e-'))
@@ -73,7 +75,12 @@ async function closeAllClean() {
 }
 
 const results = []
+// ag-psd only needs ImageData-shaped objects when reading with useImageData (no canvas in Node).
+initializeCanvas(() => { throw new Error('no canvas in Node') }, (width, height) => ({ width, height, data: new Uint8ClampedArray(width * height * 4) }))
+// E2E_ONLY=regex runs just the matching checks (plus the final error check).
+const only = process.env.E2E_ONLY ? new RegExp(process.env.E2E_ONLY, 'i') : null
 async function check(name, fn) {
+  if (only && !only.test(name) && !/uncaught errors/.test(name)) return
   try {
     const detail = await fn()
     results.push({ name, ok: true, detail: detail ?? '' })
@@ -1085,6 +1092,88 @@ await check('soft proofing and gamut warning change the display only', async () 
   expect(near(await screen(), base, 2), 'proof off should restore the display')
   expect(near(await pixF(8, 8, 'display-p3'), [0, 1, 0, 1], 0.01), 'proofing changed the document')
   return `warn ${warned.slice(0, 3)} · sRGB ${proofed.slice(0, 3)} · grey ${grey.slice(0, 3)} · deut ${deut.slice(0, 3)}`
+})
+
+const openOne = async (path) => {
+  const n = await ev(() => window.__cadencePlus.get().docs.length)
+  await D('openPaths', [path])
+  await win.waitForFunction((n) => window.__cadencePlus.get().docs.length === n + 1, n, { timeout: 30000 })
+  await settle(300)
+}
+
+await check('PSD import: layers, pass-through group, mask, blend, opacity, adjustment layers', async () => {
+  await closeAllClean()
+  const path = join(work, 'sample.psd')
+  writeFileSync(path, makePsd())
+  await openOne(path)
+  const d = await doc()
+  const names = d.layers.map((l) => `${l.name}:${l.content.type}`).join(', ')
+  const byName = Object.fromEntries(d.layers.map((l) => [l.name, l]))
+  expect(byName.Group?.content.type === 'group' && byName.Group.blend === 'pass-through', `group: ${names}`)
+  expect(byName.Blue?.parent === byName.Group.id && byName.Blue.blend === 'multiply' && Math.abs(byName.Blue.opacity - 0.5) < 0.01 && !!byName.Blue.mask, `blue layer: ${JSON.stringify({ ...byName.Blue, content: undefined })}`)
+  expect(byName.Invert?.content.type === 'adjustment' && !byName.Invert.visible && byName.Levels?.content.type === 'adjustment', `adjustments: ${names}`)
+  expect(d.layers.indexOf(byName.Background) < d.layers.indexOf(byName.Levels), `order: ${names}`)
+  const masked = await px(20, 30)
+  const shown = await px(40, 30)
+  expect(near(masked, [255, 0, 0, 255]), `masked half ${masked}`)
+  expect(near(shown, [128, 0, 0, 255], 2), `multiply 50% ${shown}`)
+  return names
+})
+
+await check('PSD export keeps layers, groups and masks (read back by ag-psd and by Cadence+)', async () => {
+  const want = [await px(20, 30), await px(40, 30), await px(5, 5)]
+  const out = join(work, 'roundtrip.psd')
+  expect(await D('exportTo', out, 'psd', 1), 'export')
+  const psd = readPsd(readFileSync(out), { useImageData: true, skipThumbnail: true })
+  const top = psd.children.map((c) => c.name)
+  const group = psd.children.find((c) => c.name === 'Group')
+  const blue = group?.children?.[0]
+  expect(top.join() === 'Background,Group,Invert,Levels', `top level ${top}`)
+  expect(blue?.name === 'Blue' && blue.blendMode === 'multiply' && Math.abs(blue.opacity - 0.5) < 0.01 && !!blue.mask?.imageData, `blue ${JSON.stringify({ ...blue, imageData: undefined, mask: !!blue?.mask })}`)
+  expect(group.blendMode === 'pass through', `group blend ${group.blendMode}`)
+  await openOne(out)
+  const got = [await px(20, 30), await px(40, 30), await px(5, 5)]
+  got.forEach((g, i) => expect(near(g, want[i], 1), `pixel ${i}: ${want[i]} → ${g}`))
+  return `layers ${top.join(', ')}`
+})
+
+await check('TIFF: 16-bit import keeps 16 bits; 16-bit TIFF export round-trips; 8-bit alpha TIFF', async () => {
+  await closeAllClean()
+  const t16 = join(work, 'ramp16.tif')
+  writeFileSync(t16, makeTiff16())
+  await openOne(t16)
+  expect((await doc()).color?.depth === 16, 'not 16-bit')
+  const levels = await distinct(4, 0, 1024)
+  expect(levels > 900, `levels ${levels}`)
+  const g = await pixF(512, 4)
+  expect(Math.abs(g[1] - 0.25) < 0.002, `green ${g}`)
+  const out = join(work, 'ramp16-out.tif')
+  expect(await D('exportTo', out, 'tiff', 1, { sixteenBit: true }), 'export')
+  await openOne(out)
+  const back = await distinct(4, 0, 1024)
+  expect(back === levels && (await doc()).color?.depth === 16, `round trip ${back} vs ${levels}`)
+  const t8 = join(work, 'alpha8.tif')
+  writeFileSync(t8, makeTiff8())
+  await openOne(t8)
+  const on = await px(5, 5)
+  const off = await px(25, 5)
+  expect(near(on, [0, 200, 0, 255]) && off[3] === 0, `8-bit ${on} / ${off}`)
+  return `${levels} levels in, ${back} after export`
+})
+
+await check('camera RAW (DNG) develops with LibRaw into 16-bit Display P3', async () => {
+  await closeAllClean()
+  const dng = join(work, 'synthetic.dng')
+  writeFileSync(dng, makeDng())
+  await openOne(dng)
+  const d = await doc()
+  expect(d.color?.depth === 16 && d.color?.space === 'display-p3' && d.width === 64 && d.height === 64, `color ${JSON.stringify(d.color)} ${d.width}×${d.height}`)
+  const grey = await pixF(10, 10)
+  const red = await pixF(50, 10)
+  const spread = Math.max(...grey.slice(0, 3)) - Math.min(...grey.slice(0, 3))
+  expect(spread < 0.02 && grey[0] > 0.35 && grey[0] < 0.6, `grey ${grey}`)
+  expect(red[0] > 0.6 && red[1] < 0.05 && red[2] < 0.05, `red ${red}`)
+  return `18% grey → ${grey[0].toFixed(3)}, linear red 0.5 → ${red.slice(0, 3).map((v) => v.toFixed(3))}`
 })
 
 await check('Ctrl+R toggles rulers without reloading the window', async () => {

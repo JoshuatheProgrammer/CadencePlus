@@ -2,7 +2,7 @@
   "name": "cadence-plus",
   "productName": "Cadence+",
   "version": "0.1.0",
-  "description": "Cadence+ \u2014 a professional image editor, sibling of Cadence",
+  "description": "Cadence+ — a professional image editor, sibling of Cadence",
   "private": true,
   "main": "out/main/index.js",
   "scripts": {
@@ -17,10 +17,13 @@
     "perf": "node scripts/perf.mjs"
   },
   "dependencies": {
+    "ag-psd": "^31.0.3",
     "dockview-react": "^8.4.1",
     "immer": "^11.1.21",
+    "libraw-wasm": "^1.6.0",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
+    "utif2": "^4.1.0",
     "zustand": "^5.0.15"
   },
   "devDependencies": {

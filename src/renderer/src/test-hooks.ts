@@ -16,6 +16,8 @@ export function installTestHooks(): void {
   if (!window.cadencePlus.isTest) return
   ;(window as unknown as Record<string, unknown>).__cadencePlus = {
     get,
+    /** The format module (PSD, TIFF, RAW), loaded on demand. */
+    formats: () => import("./engine/formats"),
     set,
     run,
     D,

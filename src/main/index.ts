@@ -1,7 +1,7 @@
 import { existsSync, promises as fsp } from 'node:fs'
 import { join } from 'node:path'
 import { app, BrowserWindow, clipboard, ClipboardItem, dialog, ipcMain, Menu, shell } from 'electron'
-import { IMAGE_EXTENSIONS, type RecoveryMeta } from '@shared/ipc'
+import { IMAGE_EXTENSIONS, RAW_FILE_EXTENSIONS, type RecoveryMeta } from '@shared/ipc'
 import { discardRecovery, listRecovery, writeRecovery } from './recovery'
 import { addRecent, getSettings, setSetting } from './settings'
 
@@ -19,7 +19,7 @@ function loadRenderer(win: BrowserWindow): void {
 }
 
 function filesFromArgv(argv: string[]): string[] {
-  const exts = [DOC_EXT, ...IMAGE_EXTENSIONS]
+  const exts = [DOC_EXT, ...IMAGE_EXTENSIONS, ...RAW_FILE_EXTENSIONS]
   return argv.slice(1).filter((a) => !a.startsWith('-') && exts.some((e) => a.toLowerCase().endsWith(`.${e}`)) && existsSync(a))
 }
 
@@ -84,9 +84,10 @@ function registerIpc(): void {
       title: 'Open',
       properties: ['openFile', 'multiSelections'],
       filters: [
-        { name: 'All supported files', extensions: [DOC_EXT, ...IMAGE_EXTENSIONS] },
+        { name: 'All supported files', extensions: [DOC_EXT, ...IMAGE_EXTENSIONS, ...RAW_FILE_EXTENSIONS] },
         { name: 'Cadence+ document', extensions: [DOC_EXT] },
         { name: 'Images', extensions: IMAGE_EXTENSIONS },
+        { name: 'Camera RAW', extensions: RAW_FILE_EXTENSIONS },
         { name: 'All files', extensions: ['*'] }
       ]
     })

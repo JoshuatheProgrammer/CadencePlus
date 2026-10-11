@@ -9,7 +9,7 @@ import { apply, createHistory, jumpTo, redo as hRedo, replace, undo as hUndo } f
 import { collectTileIds, createDocument, DEFAULT_COLOR, docColor, type DocColor, type ImageDocument } from '@core/model'
 import { collectMaskIds } from '@core/selection'
 import { clampZoom, fillView, fitView, formatZoom, nextZoomStep, type View } from '@core/view'
-import { baseName, decodeProject, encodeProject, exportImage, extOf, importImage, type ExportFormat, type ExportOptions } from '../engine/io'
+import { baseName, decodeProject, encodeProject, EXPORT_EXTENSION, exportFile, extOf, importImage, type ExportFormat, type ExportOptions } from '../engine/io'
 import { withFormat } from '../engine/format'
 import { PROOF_LABELS } from '../engine/ops'
 import { collectGarbage, solidTiles } from '../engine/tiles'
@@ -298,7 +298,7 @@ export function formatBytes(n: number): string {
 export async function exportAs(format: ExportFormat, quality: number, opts: ExportOptions = {}): Promise<boolean> {
   const ds = activeDocState()
   if (!ds) return false
-  const ext = format === 'jpeg' ? 'jpg' : format
+  const ext = EXPORT_EXTENSION[format]
   const path = await window.cadencePlus.exportDialog(displayName(ds), ext)
   return path ? exportTo(path, format, quality, opts) : false
 }
@@ -308,9 +308,9 @@ export async function exportTo(path: string, format: ExportFormat, quality: numb
   if (!ds) return false
   set({ busy: `Exporting ${baseName(path)}…` })
   try {
-    const bytes = await exportImage(ds.history.present, format, quality, opts)
+    const { bytes, note } = await exportFile(ds.history.present, format, quality, opts)
     await window.cadencePlus.writeFile(path, bytes)
-    toast(`Exported ${path.replace(/^.*[\\/]/, '')} (${formatBytes(bytes.length)})`, 'success')
+    toast(`Exported ${path.replace(/^.*[\\/]/, '')} (${formatBytes(bytes.length)})${note ? `\n${note}` : ''}`, note ? 'info' : 'success')
     return true
   } catch (e) {
     toast(`Export failed.
