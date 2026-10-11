@@ -1646,6 +1646,64 @@ await check('Export As with Scale; Export with Presets writes one correctly size
   return `${names.join(', ')}`
 })
 
+await check('Free Transform on a group and on several selected layers (pixels and type together, one undo step)', async () => {
+  const [a, b, c] = await threeSquares()
+  // Group red + green, rotate the group 180°: the squares swap places within the group's box.
+  await ev(([a, b]) => {
+    const { A } = window.__cadencePlus
+    A.selectLayer(a)
+    A.toggleLayerSelected(b)
+  }, [a, b])
+  await win.keyboard.press('Control+g')
+  await settle()
+  const before = (await doc()).history
+  await ev(() => window.__cadencePlus.TF.quickTransform('rot180'))
+  await settle(200)
+  // Box spans red (20..60, 20..60) to green (110..150, 50..90): x 20..150, y 20..90.
+  const red = await px(140, 80)
+  const green = await px(30, 30)
+  expect(near(red, [255, 0, 0, 255]) && near(green, [0, 255, 0, 255]), `group rot180: red ${red} green ${green}`)
+  expect(near(await px(30, 70), [255, 255, 255, 255]), 'old red area not cleared')
+  expect((await lastLabel()) === 'Free Transform', `label ${await lastLabel()}`)
+  // Several selected layers including type: Ctrl+T, scale ×2 about the box centre, Enter.
+  await closeAllClean()
+  await newDoc(300, 200)
+  await A('newLayer')
+  await selectRect(100, 80, 20, 20)
+  await A('fillWith', '#0000ff')
+  await A('deselect')
+  const sq = (await doc()).activeLayerId
+  await ev(() => window.__cadencePlus.VA.createShape({ x: 160, y: 80, w: 20, h: 20 }, { x: 160, y: 80 }, { x: 180, y: 100 }))
+  await settle()
+  const shape = (await doc()).activeLayerId
+  await ev(([sq]) => window.__cadencePlus.A.toggleLayerSelected(sq), [sq])
+  await win.keyboard.press('Control+t')
+  await settle()
+  const t = await ev(() => window.__cadencePlus.get().transform)
+  expect(t?.fs.kind === 'multi', `transform kind ${t?.fs.kind}`)
+  await ev(() => {
+    const { TF, get } = window.__cadencePlus
+    const p = get().transform.params
+    TF.updateTransform({ ...p, sx: 2, sy: 2 })
+  })
+  await win.keyboard.press('Enter')
+  await settle(200)
+  const d = await doc()
+  const sh = d.layers.find((l) => l.id === shape)
+  // Scaling ×2 about the box centre doubles every member's distance from it.
+  const box = t.fs.rect
+  const bcx = box.x + box.w / 2
+  const bcy = box.y + box.h / 2
+  const wantCx = bcx + (170 - bcx) * 2
+  expect(Math.abs(sh.content.params.cx - wantCx) < 0.6 && Math.abs(sh.content.params.sx - 2) < 1e-6, `shape params ${JSON.stringify(sh.content.params)} want cx ${wantCx}`)
+  const sqx = bcx + (110 - bcx) * 2
+  const sqy = bcy + (90 - bcy) * 2
+  expect(near(await px(Math.round(sqx), Math.round(sqy)), [0, 0, 255, 255]) && near(await px(Math.round(sqx - 18), Math.round(sqy - 18)), [0, 0, 255, 255]), `square scaled around ${sqx},${sqy}: ${await px(Math.round(sqx), Math.round(sqy))}`)
+  await ev(() => window.__cadencePlus.run('edit.undo'))
+  expect(near(await px(Math.round(sqx - 18), Math.round(sqy - 18)), [255, 255, 255, 255]) && near(await px(110, 90), [0, 0, 255, 255]), 'undo did not restore in one step')
+  return 'group rotated 180°; pixels + shape scaled ×2 together'
+})
+
 await check('tool groups: rail shows one slot per group; right-click lists the group', async () => {
   await win.keyboard.press('o')
   const slot = win.locator('.tool-btn.active')

@@ -15,7 +15,7 @@ import { tree } from '@core/tree'
 import { layerMip, mipLevel } from './mips'
 import { drawWithOp } from './ops'
 import { drawVector } from './vector'
-import { partMatrix, type FloatState } from './transform'
+import { memberFloat, partMatrix, type FloatState } from './transform'
 import { selectionMask } from './selection'
 import { getTile, poolCanvas, type Ctx2D } from './tiles'
 import { ctx2d } from './format'
@@ -73,6 +73,13 @@ export interface RenderOptions {
 }
 
 type FloatPreview = NonNullable<RenderOptions['float']>
+
+/** The float view for one layer: the float itself, or its member of a multi-layer transform. */
+function floatFor(f: RenderOptions['float'] | undefined, id: string): FloatPreview | null {
+  if (!f) return null
+  if (f.fs.kind === 'multi') return memberFloat(f.fs, f.m, f.params, id)
+  return f.fs.layerId === id ? f : null
+}
 
 /** Draws a float canvas through `m` (local → document) onto the target. */
 function drawFloatPart(ctx: Ctx2D, canvas: OffscreenCanvas, m: Affine, xf: Xf): void {
@@ -320,7 +327,7 @@ function renderLayers(target: OffscreenCanvas, ctx: Ctx2D, doc: ImageDocument, l
     }
 
     const fp = o.filterPreview && o.filterPreview.layerId === l.id ? o.filterPreview : null
-    const fl = o.float && o.float.fs.layerId === l.id ? o.float : null
+    const fl = floatFor(o.float, l.id)
     // Layer styles (not in single-layer renders such as thumbnails).
     const fx = o.onlyLayer ? undefined : o.effectsPreview?.layerId === l.id ? o.effectsPreview.effects : l.effects
     const styled = canHaveEffects(l) && hasActiveEffects(fx)

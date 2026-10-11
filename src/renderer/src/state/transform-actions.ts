@@ -5,7 +5,7 @@
  */
 import { isIdentityParams, paramsForRect, paramsToMatrix, snapToPixelGrid, type Affine, type TransformParams } from '@core/affine'
 import * as E from '@core/edit'
-import { beginFloat, commitFloat, floatSize } from '../engine/transform'
+import { beginFloat, beginMultiFloat, commitFloat, commitMultiFloat, floatRect, floatSize, multiVectorParams } from '../engine/transform'
 import { editDoc } from './doc-actions'
 import { activeDocState, get, set, toast, useEditor, type EditorState } from './store'
 
@@ -31,11 +31,22 @@ export function startTransform(mode: 'transform' | 'move' = 'transform'): boolea
   if (!l.visible) return toast(`“${l.name}” is hidden. Show it to ${what}.`, 'warn'), false
   if (l.content.type === 'fill') return toast(`“${l.name}” is a fill layer and covers the whole canvas; rasterize it to transform it.`, 'warn'), false
   if (l.content.type === 'adjustment') return toast('Adjustment layers have no pixels to transform.', 'warn'), false
-  if (l.content.type === 'group') return toast('Transforming a whole group is not supported yet. Transform its layers one at a time, or merge the group (Ctrl+E) first.', 'warn'), false
+  // A group, or several selected layers, transform together in one box.
+  const sel = E.selectedLayerIds(doc)
+  if (l.content.type === 'group' || sel.length > 1) {
+    if (doc.selection) return toast('Transforming selected pixels works on one layer at a time. Deselect (Ctrl+D) to transform the layers whole.', 'warn'), false
+    const ids = E.movableLayerIds(doc, sel.length > 1 ? sel : [l.id])
+    const blocked = ids.map((id) => doc.layers.find((x) => x.id === id)!).find((x) => x.locked)
+    if (blocked) return toast(`“${blocked.name}” is locked. Unlock it to ${what}.`, 'warn'), false
+    const fs = beginMultiFloat(doc, ids, ds.id, l.id)
+    if (!fs) return toast('There is nothing to transform in these layers.', 'warn'), false
+    set({ transform: { fs, params: paramsForRect(fs.rect), mode }, crop: null })
+    return true
+  }
   if (doc.target === 'mask' && doc.selection) return toast('Transforming part of a mask is not supported yet. Click the layer thumbnail to transform pixels.', 'warn'), false
   const fs = beginFloat(doc, l, ds.id)
   if (!fs) return toast(doc.selection ? 'The selected area of this layer is empty.' : `“${l.name}” is empty — there is nothing to transform.`, 'warn'), false
-  set({ transform: { fs, params: fs.kind === 'vector' ? fs.start : paramsForRect(fs.pixels.rect), mode }, crop: null })
+  set({ transform: { fs, params: fs.kind === 'vector' ? fs.start : paramsForRect(floatRect(fs)), mode }, crop: null })
   return true
 }
 
@@ -54,6 +65,21 @@ export function commitTransform(): void {
   set({ transform: null })
   const fs = t.fs
   const ds = get().docs.find((d) => d.id === fs.docId)
+  if (fs.kind === 'multi') {
+    if (!ds || isIdentityParams(t.params, fs.rect)) return
+    const doc = ds.history.present
+    const m = transformMatrix(t)
+    const r = commitMultiFloat(doc, fs, m)
+    editDoc(ds.id, t.mode === 'move' ? 'Move' : 'Free Transform', (d) => {
+      for (const [id, tiles] of Object.entries(r.tiles)) E.setLayerTiles(d, id, tiles)
+      for (const [id, tiles] of Object.entries(r.masks)) {
+        const ml = d.layers.find((x) => x.id === id)
+        if (ml?.mask) ml.mask.tiles = tiles
+      }
+      for (const v of fs.vectors) E.setVectorParams(d, v.layerId, multiVectorParams(fs, v.start, t.params))
+    })
+    return
+  }
   const l = ds?.history.present.layers.find((x) => x.id === fs.layerId)
   if (!ds || !l) return
   if (fs.kind === 'vector') {

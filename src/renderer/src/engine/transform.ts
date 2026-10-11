@@ -4,14 +4,15 @@
  * through a matrix while the user edits it, and resampled into tiles once on
  * commit. A whole-pixel move commits without resampling.
  */
-import { exactPixelMatrix, multiply, transformedBounds, type Affine, type TransformParams } from '@core/affine'
+import { apply, exactPixelMatrix, multiply, paramsToMatrix, transformedBounds, type Affine, type TransformParams } from '@core/affine'
+import { mapParams } from '@core/vector'
 import { maskBounds } from '@core/flood'
 import { isVector, rasterBounds, unionRect, type ImageDocument, type Layer, type Rect, type TileMap, type TileSurface } from '@core/model'
 import type { Selection } from '@core/selection'
 import { applyToLayer, colorSource } from './pixels'
 import { maskFromCanvas, selectionBounds, selectionMask } from './selection'
 import { drawTiles, rasterToCanvas, tilesFromCanvas } from './tiles'
-import { vectorSize } from './vector'
+import { vectorBounds, vectorSize } from './vector'
 import { ctx2d } from './format'
 
 export interface FloatPart {
@@ -22,7 +23,23 @@ export interface FloatPart {
   remainder: TileMap
 }
 
-export type FloatState = RasterFloat | VectorFloat
+export type FloatState = RasterFloat | VectorFloat | MultiFloat
+
+/**
+ * Several layers in one transform box (a group's contents, or the layers
+ * selected together). Pixel layers are lifted whole; type and shapes keep
+ * their placement and are remapped.
+ */
+export interface MultiFloat {
+  kind: 'multi'
+  docId: string
+  /** The active layer (or group). */
+  layerId: string
+  /** The box: union of every member's bounds (document). */
+  rect: Rect
+  rasters: { layerId: string; pixels: FloatPart; mask: FloatPart | null }[]
+  vectors: { layerId: string; w: number; h: number; start: TransformParams }[]
+}
 
 /** Type and shape layers transform by editing their placement: nothing is lifted. */
 export interface VectorFloat {
@@ -51,7 +68,68 @@ const translate = (x: number, y: number): Affine => ({ a: 1, b: 0, c: 0, d: 1, e
 
 /** Size of the box being transformed. */
 export function floatSize(fs: FloatState): { w: number; h: number } {
-  return fs.kind === 'vector' ? { w: fs.w, h: fs.h } : { w: fs.pixels.canvas.width, h: fs.pixels.canvas.height }
+  return fs.kind === 'vector' ? { w: fs.w, h: fs.h } : fs.kind === 'multi' ? { w: fs.rect.w, h: fs.rect.h } : { w: fs.pixels.canvas.width, h: fs.pixels.canvas.height }
+}
+
+/** The box a float starts as (document). */
+export function floatRect(fs: RasterFloat | MultiFloat): Rect {
+  return fs.kind === 'multi' ? fs.rect : fs.pixels.rect
+}
+
+/** Lifts several layers into one box; null when none of them has anything to transform. */
+export function beginMultiFloat(doc: ImageDocument, layerIds: string[], docId: string, activeId: string): MultiFloat | null {
+  const rasters: MultiFloat['rasters'] = []
+  const vectors: MultiFloat['vectors'] = []
+  let rect: Rect | null = null
+  for (const id of layerIds) {
+    const l = doc.layers.find((x) => x.id === id)
+    if (!l) continue
+    if (isVector(l.content)) {
+      const s = vectorSize(l.content)
+      vectors.push({ layerId: id, w: s.w, h: s.h, start: l.content.params })
+      rect = unionRect(rect, vectorBounds(l.content))
+    } else if (l.content.type === 'raster') {
+      const pixels = liftWhole(l.content)
+      if (!pixels) continue
+      rasters.push({ layerId: id, pixels, mask: l.mask ? liftWhole(l.mask) : null })
+      rect = unionRect(rect, pixels.rect)
+    }
+  }
+  if (!rect || (!rasters.length && !vectors.length)) return null
+  return { kind: 'multi', docId, layerId: activeId, rect, rasters, vectors }
+}
+
+/**
+ * A member's placement after the box moves from `rect` to `params`. Exact
+ * for moves, rotations, flips and proportional scaling; a non-proportional
+ * scale of a rotated member keeps its own angle (vectors cannot skew).
+ */
+export function multiVectorParams(fs: MultiFloat, start: TransformParams, params: TransformParams): TransformParams {
+  const m = multiply(paramsToMatrix(params, fs.rect.w, fs.rect.h), translate(-fs.rect.x, -fs.rect.y))
+  return mapParams(start, (x, y) => apply(m, x, y), { scaleX: params.sx, scaleY: params.sy, rotate: params.rot })
+}
+
+/** Per-member float views for rendering a multi-layer transform. */
+export function memberFloat(fs: MultiFloat, m: Affine, params: TransformParams, layerId: string): { fs: RasterFloat | VectorFloat; m: Affine; params: TransformParams } | null {
+  const r = fs.rasters.find((x) => x.layerId === layerId)
+  if (r) return { fs: { kind: 'raster', docId: fs.docId, layerId, pixels: r.pixels, mask: r.mask, selection: null, fromSelection: false }, m: partMatrix(m, fs.rect, r.pixels.rect), params }
+  const v = fs.vectors.find((x) => x.layerId === layerId)
+  if (v) return { fs: { kind: 'vector', docId: fs.docId, layerId, w: v.w, h: v.h, start: v.start }, m, params: multiVectorParams(fs, v.start, params) }
+  return null
+}
+
+/** Resamples every raster member; returns new tiles per layer (and masks). */
+export function commitMultiFloat(doc: ImageDocument, fs: MultiFloat, m: Affine): { tiles: Record<string, TileMap>; masks: Record<string, TileMap> } {
+  const tiles: Record<string, TileMap> = {}
+  const masks: Record<string, TileMap> = {}
+  for (const r of fs.rasters) {
+    const l = doc.layers.find((x) => x.id === r.layerId)
+    if (!l || l.content.type !== 'raster') continue
+    const pm = partMatrix(m, fs.rect, r.pixels.rect)
+    tiles[r.layerId] = commitPart(r.pixels, l.content, pm)
+    if (r.mask && l.mask) masks[r.layerId] = commitPart(r.mask, l.mask, partMatrix(pm, r.pixels.rect, r.mask.rect))
+  }
+  return { tiles, masks }
 }
 
 /** Matrix for a part, given the transform of the main pixels (local → document). */
