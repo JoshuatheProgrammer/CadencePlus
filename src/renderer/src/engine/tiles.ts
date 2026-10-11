@@ -4,6 +4,7 @@
  * by id, so undo snapshots share pixels instead of copying them.
  */
 import { parseTileKey, rasterBounds, tileKey, TILE, type Rect, type TileMap, type TileSurface } from '@core/model'
+import { ctx2d, formatKey, perFormat } from './format'
 
 export type Ctx2D = OffscreenCanvasRenderingContext2D | CanvasRenderingContext2D
 
@@ -35,11 +36,14 @@ export function putMask(bmp: ImageBitmap, id = nextId('m')): string {
   return id
 }
 
-const scratch = new OffscreenCanvas(TILE, TILE)
-const sctx = scratch.getContext('2d')!
+const scratchFor = perFormat(() => {
+  const c = new OffscreenCanvas(TILE, TILE)
+  return { c, g: ctx2d(c) }
+})
 
 /** Builds a tile by drawing into a cleared 256×256 scratch canvas. */
 export function makeTile(draw: (ctx: OffscreenCanvasRenderingContext2D) => void): string {
+  const { c: scratch, g: sctx } = scratchFor()
   sctx.save()
   sctx.clearRect(0, 0, TILE, TILE)
   draw(sctx)
@@ -49,13 +53,14 @@ export function makeTile(draw: (ctx: OffscreenCanvasRenderingContext2D) => void)
 
 /** A shared, immutable tile of one colour (a white background costs one tile). */
 export function solidTile(color: string): string {
-  let id = solid.get(color)
+  const key = `${color}|${formatKey()}`
+  let id = solid.get(key)
   if (!id) {
     id = makeTile((g) => {
       g.fillStyle = color
       g.fillRect(0, 0, TILE, TILE)
     })
-    solid.set(color, id)
+    solid.set(key, id)
   }
   return id
 }
@@ -70,25 +75,29 @@ export function solidTiles(w: number, h: number, color: string): TileMap {
 
 /** Reusable canvases keyed by purpose; resized on demand. */
 const pool = new Map<string, OffscreenCanvas>()
-export function poolCanvas(key: string, w: number, h: number): OffscreenCanvas {
+export function poolCanvas(name: string, w: number, h: number): OffscreenCanvas {
+  // Canvases keep their first context's format, so the pool is per format.
+  const key = `${name}|${formatKey()}`
   w = Math.max(1, Math.ceil(w))
   h = Math.max(1, Math.ceil(h))
   let c = pool.get(key)
   if (!c) {
     c = new OffscreenCanvas(w, h)
+    ctx2d(c)
     pool.set(key, c)
   } else if (c.width !== w || c.height !== h) {
     c.width = w
     c.height = h
   } else {
     // reset() clears the pixels and every piece of state (composite op, filter, transform, clip).
-    c.getContext('2d')!.reset()
+    ctx2d(c).reset()
   }
   return c
 }
 
 /** Frees pooled canvases (they can be large). */
-export function releasePool(key: string): void {
+export function releasePool(name: string): void {
+  const key = `${name}|${formatKey()}`
   const c = pool.get(key)
   if (c) {
     c.width = c.height = 1
@@ -96,6 +105,7 @@ export function releasePool(key: string): void {
   }
 }
 
+// Alpha-only probe: 8-bit is enough.
 const emptyCheck = new OffscreenCanvas(TILE, TILE)
 const ectx = emptyCheck.getContext('2d', { willReadFrequently: true })!
 
@@ -114,6 +124,7 @@ function isTransparent(src: CanvasImageSource): boolean {
  */
 export function tilesFromCanvas(src: CanvasImageSource & { width: number; height: number }, srcX: number, srcY: number, layerX: number, layerY: number): TileMap {
   const out: TileMap = {}
+  const { c: scratch, g: sctx } = scratchFor()
   const tx0 = Math.floor((srcX - layerX) / TILE)
   const ty0 = Math.floor((srcY - layerY) / TILE)
   const tx1 = Math.ceil((srcX + src.width - layerX) / TILE)
@@ -146,7 +157,7 @@ export function rasterToCanvas(content: TileSurface, key = 'raster'): { canvas: 
   const r = rasterBounds(content)
   if (!r) return null
   const c = poolCanvas(key, r.w, r.h)
-  drawTiles(c.getContext('2d')!, content, -r.x, -r.y)
+  drawTiles(ctx2d(c), content, -r.x, -r.y)
   return { canvas: c, rect: r }
 }
 

@@ -54,6 +54,25 @@ export function installTestHooks(): void {
       for (let i = 0; i < d.length; i += 4) if (d[i + 3] > 128 && 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2] < t) n++
       return n
     },
+    /** RGBA (0..1 floats) of the composite at (x, y) in a colour space (16-bit precision). */
+    pixelF(x: number, y: number, space: 'srgb' | 'display-p3' = 'srgb'): number[] {
+      const doc = get().docs.find((d) => d.id === get().activeId)?.history.present
+      if (!doc) return []
+      const c = renderComposite(doc, 'test')
+      const g = c.getContext('2d') as OffscreenCanvasRenderingContext2D
+      return Array.from(g.getImageData(x, y, 1, 1, { colorSpace: space, pixelFormat: 'rgba-float16' } as ImageDataSettings).data as unknown as ArrayLike<number>)
+    },
+    /** Distinct red levels along a row of the composite (precision check). */
+    distinctRed(y: number, x0: number, x1: number): number {
+      const doc = get().docs.find((d) => d.id === get().activeId)?.history.present
+      if (!doc) return 0
+      const c = renderComposite(doc, 'test')
+      const g = c.getContext('2d') as OffscreenCanvasRenderingContext2D
+      const d = g.getImageData(x0, y, x1 - x0, 1, { pixelFormat: 'rgba-float16' } as ImageDataSettings).data as unknown as ArrayLike<number>
+      const s = new Set<number>()
+      for (let i = 0; i < x1 - x0; i++) s.add(d[i * 4])
+      return s.size
+    },
     /** RGBA of the flattened active document at (x, y). */
     pixel(x: number, y: number): number[] {
       const doc = get().docs.find((d) => d.id === get().activeId)?.history.present

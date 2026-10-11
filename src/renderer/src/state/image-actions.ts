@@ -4,7 +4,8 @@
  */
 import { ADJUSTMENTS, defaultAdjustment, type Adjustment, type AdjustmentKind, type PixelOp } from '@core/adjustments'
 import * as E from '@core/edit'
-import { activeLayer, createDocument, TILE, type ImageDocument, type Rect } from '@core/model'
+import { activeLayer, createDocument, docColor, TILE, type DocColor, type ImageDocument, type Rect, type TileMap } from '@core/model'
+import { withFormat } from '../engine/format'
 import { descendants, effectivelyVisible } from '@core/tree'
 import * as S from '@core/selection'
 import type { BrushOptions } from '../engine/brush'
@@ -12,7 +13,7 @@ import type { Stroke } from '../engine/brush'
 import { canvasToPng, decodeImage } from '../engine/io'
 import { rasterizeTiles, applyMaskTiles, applyToLayer, bucketSource, canvasSource, colorSource, copyPixels, filterLayer, invertMaskTiles, layerCanvas, maskTilesFromSelection, maskVisibility, mergeToTiles, sampleColor, transformLayers, wandMask, type DocTransform, type Source } from '../engine/pixels'
 import { maskFromCanvas, selectionBounds } from '../engine/selection'
-import { solidTiles, tilesFromCanvas } from '../engine/tiles'
+import { rasterToCanvas, releasePool, solidTiles, tilesFromCanvas } from '../engine/tiles'
 import { addDocument, attempt, edit, holdingTiles, silent } from './doc-actions'
 import { activeDoc, get, set, toast } from './store'
 
@@ -401,6 +402,38 @@ export function maskToSelection(id: string): void {
   const maskId = maskFromCanvas(maskVisibility(d, l.mask))
   edit('Load Selection', (x) => E.setSelection(x, { steps: [{ op: 'add', shape: { kind: 'mask', maskId, x: 0, y: 0 } }] }))
 }
+
+/**
+ * Image → Mode / Convert to Profile: every pixel layer and mask is redrawn
+ * into canvases of the new format (Chromium converts colour spaces), then
+ * re-tiled. One undo step.
+ */
+export function convertDocColor(color: DocColor, label: string): void {
+  const d = doc()
+  if (!d) return
+  const cur = docColor(d)
+  if (cur.depth === color.depth && cur.space === color.space) return
+  if (transformingLock()) return
+  const r = withFormat(color, () => {
+    const layers: Record<string, TileMap> = {}
+    const masks: Record<string, TileMap> = {}
+    for (const l of d.layers) {
+      if (l.content.type === 'raster') {
+        const c = rasterToCanvas(l.content, 'convert')
+        layers[l.id] = c ? tilesFromCanvas(c.canvas, c.rect.x, c.rect.y, l.content.x, l.content.y) : {}
+      }
+      if (l.mask) {
+        const c = rasterToCanvas(l.mask, 'convert')
+        masks[l.id] = c ? tilesFromCanvas(c.canvas, c.rect.x, c.rect.y, l.mask.x, l.mask.y) : {}
+      }
+    }
+    releasePool('convert')
+    return { layers, masks }
+  })
+  edit(label, (x) => E.convertColor(x, color, r.layers, r.masks))
+}
+
+const transformingLock = () => !!get().transform && (toast('Commit or cancel the transform first.', 'warn'), true)
 
 export function resizeCanvas(w: number, h: number, ax: number, ay: number): void {
   edit('Canvas Size', (x) => E.resizeCanvas(x, w, h, ax, ay))

@@ -6,6 +6,7 @@
  */
 import { unionRect, type Rect } from '@core/model'
 import { poolCanvas } from './tiles'
+import { ctx2d, formatKey } from './format'
 
 export interface BrushOptions {
   /** Diameter in document pixels. */
@@ -29,13 +30,13 @@ const stamps = new Map<string, OffscreenCanvas>()
 /** A single brush dab; the dab's centre is the canvas centre. */
 export function stampImage(diameter: number, hardness: number, color: string): OffscreenCanvas {
   const dq = Math.max(0.5, Math.round(diameter * 2) / 2)
-  const key = `${dq}|${hardness}|${color}`
+  const key = `${dq}|${hardness}|${color}|${formatKey()}`
   let c = stamps.get(key)
   if (c) return c
   if (stamps.size > 96) stamps.clear()
   const d = Math.ceil(dq) + 2
   c = new OffscreenCanvas(d, d)
-  const g = c.getContext('2d')!
+  const g = ctx2d(c)
   const r = dq / 2
   const h = Math.min(1, Math.max(0, hardness / 100))
   if (h >= 0.99 || r < 1.5) {
@@ -71,7 +72,7 @@ export class Stroke {
     readonly erase: boolean
   ) {
     this.canvas = poolCanvas('stroke', w, h)
-    this.g = this.canvas.getContext('2d')!
+    this.g = ctx2d(this.canvas)
   }
 
   get opacity(): number {

@@ -379,6 +379,15 @@ export function flattenDocument(doc: ImageDocument, tiles: TileMap): void {
   doc.activeLayerId = l.id
 }
 
+/** Mode / profile conversion: new colour settings plus re-encoded tiles for every pixel layer and mask. */
+export function convertColor(doc: ImageDocument, color: { depth: 8 | 16; space: 'srgb' | 'display-p3' }, layers: Record<string, TileMap>, masks: Record<string, TileMap>): void {
+  for (const l of doc.layers) {
+    if (l.content.type === 'raster' && layers[l.id]) l.content.tiles = layers[l.id]
+    if (l.mask && masks[l.id]) l.mask.tiles = masks[l.id]
+  }
+  doc.color = color.depth === 8 && color.space === 'srgb' ? undefined : color
+}
+
 export function setSelection(doc: ImageDocument, sel: Selection | null): void {
   doc.selection = sel
 }

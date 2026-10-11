@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react'
 import { DockviewReact, type DockviewApi, type DockviewReadyEvent, type DockviewTheme, type IDockviewPanelProps } from 'dockview-react'
 import { formatZoom } from '@core/view'
+import { formatLabel } from '../engine/format'
 import { storeStats } from '../engine/tiles'
-import { command, handleKeydown, keysFor, run } from '../state/commands'
+import { docColor } from '@core/model'
+import { command, currentColor, handleKeydown, keysFor, run } from '../state/commands'
 import { confirmQuit, displayName, formatBytes, newDocument, openDialog, openPaths, setZoom, titleFor } from '../state/doc-actions'
 import * as A from '../state/image-actions'
 import { activeDocState, get, isDirty, set, useEditor, type PanelId } from '../state/store'
@@ -17,6 +19,7 @@ import { HistoryPanel } from './panels/HistoryPanel'
 import { LayersPanel } from './panels/LayersPanel'
 import { NavigatorPanel } from './panels/NavigatorPanel'
 import { PropertiesPanel } from './panels/PropertiesPanel'
+import { startFormatSync } from '../state/format-sync'
 import { offerRecovery, startAutosave } from '../state/recovery'
 import { installTestHooks } from '../test-hooks'
 import { TooltipHost } from './Tooltip'
@@ -139,6 +142,21 @@ function menus(): Record<string, MenuEntry[]> {
           { sep: true },
           { cmd: 'image.invert' },
           { cmd: 'image.desaturate' }
+        ]
+      },
+      { sep: true },
+      {
+        label: 'Mode',
+        submenu: () => [
+          { cmd: 'image.mode8', checked: currentColor()?.depth === 8 },
+          { cmd: 'image.mode16', checked: currentColor()?.depth === 16 }
+        ]
+      },
+      {
+        label: 'Convert to Profile',
+        submenu: () => [
+          { cmd: 'image.toSrgb', checked: currentColor()?.space === 'srgb' },
+          { cmd: 'image.toP3', checked: currentColor()?.space === 'display-p3' }
         ]
       },
       { sep: true },
@@ -424,7 +442,7 @@ function StatusBar() {
             <span className="val">
               {doc.width} × {doc.height}
             </span>{' '}
-            px · RGB/8 · sRGB
+            px · {formatLabel(docColor(doc))}
           </span>
           <span>
             X/Y{' '}
@@ -554,6 +572,7 @@ export function App() {
         ...(Array.isArray(s.swatches) ? { swatches: s.swatches as string[] } : {})
       })
     })
+    const stopFormat = startFormatSync()
     const stopAutosave = startAutosave()
     void offerRecovery()
     const onKey = (e: KeyboardEvent) => void handleKeydown(e)
@@ -585,6 +604,7 @@ export function App() {
       offOpen()
       unsub()
       stopAutosave()
+      stopFormat()
     }
   }, [])
   return (

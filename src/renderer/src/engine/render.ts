@@ -18,6 +18,7 @@ import { drawVector } from './vector'
 import { partMatrix, type FloatState } from './transform'
 import { selectionMask } from './selection'
 import { getTile, poolCanvas, type Ctx2D } from './tiles'
+import { ctx2d } from './format'
 
 /** target = doc × scale + (ox, oy) */
 export interface Xf {
@@ -163,7 +164,7 @@ function drawSelectionMask(ctx: Ctx2D, doc: ImageDocument, xf: Xf): void {
 function strokeOnTarget(stroke: StrokePreview, doc: ImageDocument, xf: Xf, W: number, H: number): OffscreenCanvas {
   const r = docRectOnTarget(doc, xf)
   const sc = poolCanvas('render.stroke', W, H)
-  const sg = sc.getContext('2d')!
+  const sg = ctx2d(sc)
   sg.imageSmoothingEnabled = xf.scale < 1
   sg.imageSmoothingQuality = 'low'
   sg.drawImage(stroke.canvas, r.x, r.y, r.w, r.h)
@@ -180,7 +181,7 @@ function strokeOnTarget(stroke: StrokePreview, doc: ImageDocument, xf: Xf, W: nu
 /** The layer's hide amount (mask alpha) at target scale, including a mask stroke in progress. */
 function hideOnTarget(l: Layer, doc: ImageDocument, xf: Xf, W: number, H: number, stroke: StrokePreview | null, fl: FloatPreview | null = null): OffscreenCanvas {
   const hc = poolCanvas('render.hide', W, H)
-  const hg = hc.getContext('2d')!
+  const hg = ctx2d(hc)
   if (l.mask && fl?.fs.kind === 'raster' && fl.fs.mask) {
     drawRaster(hg, { x: l.mask.x, y: l.mask.y, tiles: fl.fs.mask.remainder }, xf, W, H, `${l.id}#maskrem`)
     drawFloatPart(hg, fl.fs.mask.canvas, partMatrix(fl.m, fl.fs.pixels.rect, fl.fs.mask.rect), xf)
@@ -203,10 +204,10 @@ function hideOnTarget(l: Layer, doc: ImageDocument, xf: Xf, W: number, H: number
 }
 
 /** Renders `doc` into `target` (cleared first). */
-export function renderDocument(target: OffscreenCanvas | HTMLCanvasElement, doc: ImageDocument, o: RenderOptions): void {
+export function renderDocument(target: OffscreenCanvas, doc: ImageDocument, o: RenderOptions): void {
   const W = o.width
   const H = o.height
-  const ctx = target.getContext('2d') as Ctx2D
+  const ctx = ctx2d(target)
   const r = docRectOnTarget(doc, o.xf)
   ctx.save()
   ctx.setTransform(1, 0, 0, 1, 0, 0)
@@ -236,7 +237,7 @@ export function renderDocument(target: OffscreenCanvas | HTMLCanvasElement, doc:
 }
 
 /** Composites sibling layers (bottom → top) into `ctx`, recursing into groups. */
-function renderLayers(target: OffscreenCanvas | HTMLCanvasElement, ctx: Ctx2D, doc: ImageDocument, layers: Layer[], o: RenderOptions, W: number, H: number, r: { x: number; y: number; w: number; h: number }, depth: number): void {
+function renderLayers(target: OffscreenCanvas, ctx: Ctx2D, doc: ImageDocument, layers: Layer[], o: RenderOptions, W: number, H: number, r: { x: number; y: number; w: number; h: number }, depth: number): void {
   for (const l of layers) {
     if (!l.visible) continue
     if (l.content.type === 'group') {
@@ -248,7 +249,7 @@ function renderLayers(target: OffscreenCanvas | HTMLCanvasElement, ctx: Ctx2D, d
         continue
       }
       const gc = poolCanvas(`render.group.${depth}`, W, H)
-      const gg = gc.getContext('2d')!
+      const gg = ctx2d(gc)
       renderLayers(gc, gg, doc, kids, o, W, H, r, depth + 1)
       if (masked) {
         gg.save()
@@ -274,12 +275,12 @@ function renderLayers(target: OffscreenCanvas | HTMLCanvasElement, ctx: Ctx2D, d
       const aop = adjustmentOp(l.content.adjustment)
       if (!aop || l.opacity <= 0) continue
       const copy = poolCanvas('render.adjust', W, H)
-      copy.getContext('2d')!.drawImage(target, 0, 0)
+      ctx2d(copy).drawImage(target, 0, 0)
       ctx.save()
       if (masked) {
         // Filtered copy, hidden where the mask hides, laid over the original.
         const fl = poolCanvas('render.filtered', W, H)
-        const fg = fl.getContext('2d')!
+        const fg = ctx2d(fl)
         drawWithOp(fg, copy, aop, o.xf.scale)
         fg.globalCompositeOperation = 'destination-out'
         fg.drawImage(hideOnTarget(l, doc, o.xf, W, H, maskStroke), 0, 0)
@@ -309,7 +310,7 @@ function renderLayers(target: OffscreenCanvas | HTMLCanvasElement, ctx: Ctx2D, d
 
     // Layers being edited render through a temporary canvas first.
     const tmp = poolCanvas('render.layer', W, H)
-    const tg = tmp.getContext('2d')!
+    const tg = ctx2d(tmp)
     if (fl && fl.fs.kind === 'raster' && l.content.type === 'raster') {
       drawRaster(tg, { x: l.content.x, y: l.content.y, tiles: fl.fs.pixels.remainder }, o.xf, W, H, `${l.id}#rem`)
       drawFloatPart(tg, fl.fs.pixels.canvas, fl.m, o.xf)
@@ -318,7 +319,7 @@ function renderLayers(target: OffscreenCanvas | HTMLCanvasElement, ctx: Ctx2D, d
 
     if (fp) {
       const filtered = poolCanvas('render.filtered', W, H)
-      const fg = filtered.getContext('2d')!
+      const fg = ctx2d(filtered)
       drawWithOp(fg, tmp, fp.op, o.xf.scale)
       if (doc.selection) {
         drawSelectionMask(fg, doc, o.xf)

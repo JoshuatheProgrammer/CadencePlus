@@ -5,7 +5,7 @@
  *   node scripts/e2e.mjs
  */
 import { _electron as electron } from 'playwright'
-import { mkdirSync, mkdtempSync, existsSync, statSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, existsSync, statSync, readFileSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { tmpdir } from 'node:os'
 import { execSync } from 'node:child_process'
@@ -965,6 +965,93 @@ await check('rebind shortcuts: record, conflicts move, saved to settings, reset'
   await win.click('.modal .btn.primary')
   await win.keyboard.press('m')
   expect((await ev(() => window.__cadencePlus.get().tool)) === 'marquee', 'reset')
+})
+
+// ---------------------------------------------------------------- colour management
+const pixF = (x, y, space = 'srgb') => ev(([x, y, s]) => window.__cadencePlus.pixelF(x, y, s), [x, y, space])
+const distinct = (y, x0, x1) => ev(([y, a, b]) => window.__cadencePlus.distinctRed(y, a, b), [y, x0, x1])
+const newDocColor = async (w, h, color, background = 'white') => {
+  await ev(([w, h, c, bg]) => window.__cadencePlus.D.newDocument({ name: 'Colour', width: w, height: h, resolution: 72, background: bg, color: c }), [w, h, color, background])
+  await win.waitForFunction(() => !!window.__cadencePlus.get().docs.find((d) => d.id === window.__cadencePlus.get().activeId)?.view)
+  await settle()
+}
+
+await check('16-bit document keeps smooth gradients (more than 256 levels)', async () => {
+  await newDocColor(1024, 8, { depth: 16, space: 'srgb' })
+  await ev(() => window.__cadencePlus.set({ fg: '#000000', bg: '#ffffff' }))
+  await A('gradientFill', 0, 4, 1024, 4)
+  const n = await distinct(4, 0, 1024)
+  expect(n > 300, `distinct levels ${n}`)
+  return `${n} levels`
+})
+
+await check('16-bit: Levels keeps precision; save/reopen and 16-bit PNG export are exact; Mode → 8 bits quantizes', async () => {
+  const id = (await doc()).activeLayerId
+  await A('newAdjustmentLayer', 'levels')
+  await A('setAdjustmentParams', (await doc()).activeLayerId, { kind: 'levels', params: { inBlack: 0, inWhite: 255, gamma: 1.6, outBlack: 0, outWhite: 255 } })
+  const nl = await distinct(4, 0, 1024)
+  expect(nl > 300, `levels banded: ${nl}`)
+  await A('mergeVisible')
+  const before = await distinct(4, 0, 1024)
+  const proj = join(work, 'deep.cadenceimg')
+  await ev((p) => window.__cadencePlus.set((s) => ({ docs: s.docs.map((d) => (d.id === s.activeId ? { ...d, path: p } : d)) })), proj)
+  expect(await D('save'), 'save')
+  const png16 = join(work, 'deep.png')
+  expect(await D('exportTo', png16, 'png', 1, { sixteenBit: true }), 'export')
+  const bytes = Array.from(readFileSync(png16).subarray(24, 26))
+  expect(bytes[0] === 16, `PNG bit depth ${bytes[0]}`)
+  await closeAllClean()
+  await D('openPaths', [proj])
+  await win.waitForFunction(() => window.__cadencePlus.get().docs.length === 1)
+  await settle(300)
+  expect((await doc()).color?.depth === 16, 'reopened depth')
+  expect((await distinct(4, 0, 1024)) === before, 'project lost precision')
+  await D('openPaths', [png16])
+  await win.waitForFunction(() => window.__cadencePlus.get().docs.length === 2)
+  await settle(300)
+  expect((await doc()).color?.depth === 16, 'PNG reopened as 8-bit')
+  expect((await distinct(4, 0, 1024)) === before, `16-bit PNG round trip ${await distinct(4, 0, 1024)} vs ${before}`)
+  await ev(() => window.__cadencePlus.run('image.mode8'))
+  const n8 = await distinct(4, 0, 1024)
+  expect(n8 <= 256 && (await doc()).color === undefined, `8-bit ${n8}`)
+  await win.keyboard.press('Control+z')
+  await settle()
+  expect((await distinct(4, 0, 1024)) === before, 'undo of mode change')
+  void id
+  return `${before} levels`
+})
+
+await check('Display P3: sRGB colours convert; P3-only colours survive; profile embedded; Convert to sRGB clips', async () => {
+  await closeAllClean()
+  await newDocColor(64, 64, { depth: 8, space: 'display-p3' })
+  await A('fillWith', '#ff0000')
+  const p3 = await pixF(5, 5, 'display-p3')
+  const s = await pixF(5, 5, 'srgb')
+  expect(Math.abs(p3[0] - 0.917) < 0.01 && Math.abs(p3[1] - 0.2) < 0.02 && Math.abs(s[0] - 1) < 0.01 && s[1] < 0.01, `p3 ${p3} srgb ${s}`)
+  // A P3 image with pure P3 green, written by Chromium, then opened.
+  const green = join(work, 'p3-green.png')
+  const bytes = await ev(async () => {
+    const c = new OffscreenCanvas(16, 16)
+    const g = c.getContext('2d', { colorSpace: 'display-p3' })
+    g.fillStyle = 'color(display-p3 0 1 0)'
+    g.fillRect(0, 0, 16, 16)
+    return Array.from(new Uint8Array(await (await c.convertToBlob({ type: 'image/png' })).arrayBuffer()))
+  })
+  writeFileSync(green, Buffer.from(bytes))
+  await D('openPaths', [green])
+  await win.waitForFunction(() => window.__cadencePlus.get().docs.length === 2)
+  await settle(300)
+  expect((await doc()).color?.space === 'display-p3', 'opened as sRGB')
+  const g = await pixF(5, 5, 'display-p3')
+  expect(g[0] < 0.01 && g[1] > 0.99 && g[2] < 0.01, `P3 green lost: ${g}`)
+  const out = join(work, 'p3-out.png')
+  expect(await D('exportTo', out, 'png', 1), 'export')
+  const hasIcc = readFileSync(out).includes('iCCP')
+  expect(hasIcc, 'no embedded profile in the P3 export')
+  await ev(() => window.__cadencePlus.run('image.toSrgb'))
+  const c = await pixF(5, 5, 'display-p3')
+  expect(c[0] > 0.2 && (await doc()).color === undefined, `not clipped to sRGB: ${c}`)
+  return `P3 green ${g.slice(0, 3).map((v) => v.toFixed(3))} → sRGB-clipped ${c.slice(0, 3).map((v) => v.toFixed(3))}`
 })
 
 await check('Ctrl+R toggles rulers without reloading the window', async () => {

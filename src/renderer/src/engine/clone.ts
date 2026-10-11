@@ -10,19 +10,20 @@ import type { ImageDocument, Layer, Rect } from '@core/model'
 import { intersectRect } from '@core/model'
 import { layerCanvas } from './pixels'
 import { renderComposite } from './render'
+import { ctx2d } from './format'
 
 /** A private snapshot of the pixels to clone from (taken when the stroke starts). */
 export function sourceSnapshot(doc: ImageDocument, sampleAll: boolean, active: Layer | undefined): OffscreenCanvas {
   const src = sampleAll || !active ? renderComposite(doc, 'clone.src') : layerCanvas(doc, active, 'clone.src')
   const c = new OffscreenCanvas(doc.width, doc.height)
-  c.getContext('2d')!.drawImage(src, 0, 0)
+  ctx2d(c).drawImage(src, 0, 0)
   return c
 }
 
 /** Coverage (alpha of `stroke`) filled with the source shifted by (dx, dy): pixel p shows source p + d. */
 export function clonePixels(stroke: OffscreenCanvas, src: OffscreenCanvas, dx: number, dy: number): OffscreenCanvas {
   const c = new OffscreenCanvas(stroke.width, stroke.height)
-  const g = c.getContext('2d')!
+  const g = ctx2d(c)
   g.drawImage(stroke, 0, 0)
   g.globalCompositeOperation = 'source-in'
   g.drawImage(src, -dx, -dy)
@@ -42,7 +43,7 @@ export function healPixels(stroke: OffscreenCanvas, src: OffscreenCanvas, dst: O
   if (!R) return out
   const region = (draw: (g: OffscreenCanvasRenderingContext2D) => void, blur = 0) => {
     const c = new OffscreenCanvas(R.w, R.h)
-    const g = c.getContext('2d', { willReadFrequently: true })!
+    const g = ctx2d(c, { willReadFrequently: true })
     if (blur > 0) g.filter = `blur(${blur}px)`
     draw(g)
     return g.getImageData(0, 0, R.w, R.h).data
@@ -56,7 +57,7 @@ export function healPixels(stroke: OffscreenCanvas, src: OffscreenCanvas, dst: O
     for (let k = 0; k < 3; k++) o[p + k] = S[p + k] - Sl[p + k] + Dl[p + k]
     o[p + 3] = S[p + 3]
   }
-  const og = out.getContext('2d')!
+  const og = ctx2d(out)
   og.putImageData(img, R.x, R.y)
   og.globalCompositeOperation = 'destination-in'
   og.drawImage(stroke, 0, 0)

@@ -14,6 +14,7 @@ import { drawVector, vectorBounds } from './vector'
 import { renderComposite, renderDocument } from './render'
 import { maskFromArray, selectionMask } from './selection'
 import { drawTiles, getTile, makeTile, poolCanvas, rasterToCanvas, tilesFromCanvas, type Ctx2D } from './tiles'
+import { ctx2d, perFormat } from './format'
 
 /** Draws document content with document point (ox, oy) at the canvas origin. */
 export type Source = (g: Ctx2D, ox: number, oy: number) => void
@@ -30,8 +31,11 @@ export const colorSource =
     g.fillRect(0, 0, TILE, TILE)
   }
 
-const srcTile = new OffscreenCanvas(TILE, TILE)
-const stg = srcTile.getContext('2d')!
+const srcTileFor = perFormat(() => {
+  const c = new OffscreenCanvas(TILE, TILE)
+  return { c, g: ctx2d(c) }
+})
+// Alpha-only probes: 8-bit is enough.
 const probe = new OffscreenCanvas(TILE, TILE)
 const pg = probe.getContext('2d', { willReadFrequently: true })!
 
@@ -52,7 +56,7 @@ export type ApplyMode = 'over' | 'erase' | 'replace' | 'mask'
  * painted (black hides, white reveals), mixed in by the source alpha:
  * hide' = hide × (1 − a) + (1 − luminance) × a.
  */
-function maskTile(old: ImageBitmap | undefined, opacity: number): ImageData | null {
+function maskTile(stg: OffscreenCanvasRenderingContext2D, old: ImageBitmap | undefined, opacity: number): ImageData | null {
   const sd = stg.getImageData(0, 0, TILE, TILE).data
   let od: Uint8ClampedArray | null = null
   if (old) {
@@ -90,6 +94,7 @@ export function applyToLayer(doc: ImageDocument, content: TileSurface, source: S
   const out: TileMap = { ...content.tiles }
   const r = intersectRect(rect, { x: 0, y: 0, w: doc.width, h: doc.height })
   if (!r) return out
+  const { c: srcTile, g: stg } = srcTileFor()
   const mask = selection ? selectionMask(selection, doc.width, doc.height) : null
   const tx0 = Math.floor((r.x - content.x) / TILE)
   const ty0 = Math.floor((r.y - content.y) / TILE)
@@ -115,7 +120,7 @@ export function applyToLayer(doc: ImageDocument, content: TileSurface, source: S
       }
       stg.restore()
       if (mode === 'mask') {
-        const img = maskTile(old, opacity)
+        const img = maskTile(stg, old, opacity)
         if (img) out[key] = makeTile((g) => g.putImageData(img, 0, 0))
         else delete out[key]
         continue
@@ -150,7 +155,7 @@ export function applyToLayer(doc: ImageDocument, content: TileSurface, source: S
 /** A layer's own pixels in a document-sized canvas (fill layers cover the canvas). */
 export function layerCanvas(doc: ImageDocument, l: Layer, key = 'layer'): OffscreenCanvas {
   const c = poolCanvas(key, doc.width, doc.height)
-  const g = c.getContext('2d')!
+  const g = ctx2d(c)
   if (l.content.type === 'raster') drawTiles(g, l.content, 0, 0)
   else if (l.content.type === 'fill') {
     g.fillStyle = l.content.color
@@ -164,7 +169,7 @@ export function rasterizeTiles(doc: ImageDocument, l: Layer): TileMap {
   if (isVector(l.content)) {
     const b = vectorBounds(l.content)
     const c = poolCanvas('rasterize', b.w, b.h)
-    drawVector(c.getContext('2d')!, l.content, { a: 1, b: 0, c: 0, d: 1, e: -b.x, f: -b.y })
+    drawVector(ctx2d(c), l.content, { a: 1, b: 0, c: 0, d: 1, e: -b.x, f: -b.y })
     return tilesFromCanvas(c, b.x, b.y, 0, 0)
   }
   return tilesFromCanvas(layerCanvas(doc, l), 0, 0, 0, 0)
@@ -211,7 +216,8 @@ export function sampleColor(doc: ImageDocument, x: number, y: number, allLayers:
   const x1 = Math.min(doc.width, Math.floor(x) + h + 1)
   const y1 = Math.min(doc.height, Math.floor(y) + h + 1)
   if (x1 <= x0 || y1 <= y0) return null
-  const d = src.getContext('2d')!.getImageData(x0, y0, x1 - x0, y1 - y0).data
+  // Colours are sRGB hex in the UI, so sample converted to sRGB (wide-gamut values clip).
+  const d = ctx2d(src).getImageData(x0, y0, x1 - x0, y1 - y0, { colorSpace: 'srgb' }).data
   let r = 0
   let g = 0
   let b = 0
@@ -232,7 +238,7 @@ export function sampleColor(doc: ImageDocument, x: number, y: number, allLayers:
 export function wandMask(doc: ImageDocument, x: number, y: number, tolerance: number, contiguous: boolean, allLayers: boolean): { maskId: string; bounds: Rect } | null {
   if (x < 0 || y < 0 || x >= doc.width || y >= doc.height) return null
   const src = sampleSource(doc, allLayers)
-  const d = src.getContext('2d')!.getImageData(0, 0, doc.width, doc.height).data
+  const d = ctx2d(src).getImageData(0, 0, doc.width, doc.height).data
   const m = colorMask(d, doc.width, doc.height, x, y, tolerance, contiguous)
   const bounds = maskBounds(m, doc.width, doc.height)
   if (!bounds) return null
@@ -243,7 +249,7 @@ export function wandMask(doc: ImageDocument, x: number, y: number, tolerance: nu
 export function bucketSource(doc: ImageDocument, x: number, y: number, tolerance: number, contiguous: boolean, allLayers: boolean, color: string): { source: Source; bounds: Rect } | null {
   if (x < 0 || y < 0 || x >= doc.width || y >= doc.height) return null
   const src = sampleSource(doc, allLayers)
-  const d = src.getContext('2d')!.getImageData(0, 0, doc.width, doc.height).data
+  const d = ctx2d(src).getImageData(0, 0, doc.width, doc.height).data
   const m = colorMask(d, doc.width, doc.height, x, y, tolerance, contiguous)
   const bounds = maskBounds(m, doc.width, doc.height)
   if (!bounds) return null
@@ -258,7 +264,7 @@ export function bucketSource(doc: ImageDocument, x: number, y: number, tolerance
     img.data[p + 3] = 255
   }
   const c = new OffscreenCanvas(doc.width, doc.height)
-  c.getContext('2d')!.putImageData(img, 0, 0)
+  ctx2d(c).putImageData(img, 0, 0)
   return { source: canvasSource(c), bounds }
 }
 
@@ -285,7 +291,7 @@ export function mergeToTiles(doc: ImageDocument, layers: Layer[], background?: s
   let src: OffscreenCanvas = c
   if (background) {
     src = poolCanvas('merge.bg', b.w, b.h)
-    const g = src.getContext('2d')!
+    const g = ctx2d(src)
     g.fillStyle = background
     g.fillRect(-b.x, -b.y, doc.width, doc.height)
     g.drawImage(c, 0, 0)
@@ -301,7 +307,7 @@ function effectivelyVisibleIn(layers: Layer[], l: Layer): boolean {
 export function applyMaskTiles(content: TileSurface, mask: TileSurface): TileMap {
   const src = rasterToCanvas(content, 'applymask')
   if (!src) return {}
-  const g = src.canvas.getContext('2d')!
+  const g = ctx2d(src.canvas)
   g.globalCompositeOperation = 'destination-out'
   drawTiles(g, mask, -src.rect.x, -src.rect.y)
   g.globalCompositeOperation = 'source-over'
@@ -311,7 +317,7 @@ export function applyMaskTiles(content: TileSurface, mask: TileSurface): TileMap
 /** Mask tiles hiding everything outside the selection (or inside it, with `hideSelected`). */
 export function maskTilesFromSelection(doc: ImageDocument, hideSelected: boolean): TileMap {
   const c = poolCanvas('mask.sel', doc.width, doc.height)
-  const g = c.getContext('2d')!
+  const g = ctx2d(c)
   const m = doc.selection ? selectionMask(doc.selection, doc.width, doc.height) : null
   if (hideSelected) {
     if (m) g.drawImage(m, 0, 0)
@@ -334,7 +340,7 @@ export function maskTilesFromSelection(doc: ImageDocument, hideSelected: boolean
 export function invertMaskTiles(doc: ImageDocument, mask: TileSurface): TileMap {
   const b = unionRect({ x: 0, y: 0, w: doc.width, h: doc.height }, rasterBounds(mask))!
   const c = poolCanvas('mask.invert', b.w, b.h)
-  const g = c.getContext('2d')!
+  const g = ctx2d(c)
   g.fillStyle = '#000'
   g.fillRect(0, 0, b.w, b.h)
   g.globalCompositeOperation = 'destination-out'
@@ -346,7 +352,7 @@ export function invertMaskTiles(doc: ImageDocument, mask: TileSurface): TileMap 
 /** The visible part of a mask (inverse of hide) as a document-sized canvas, for Load Selection. */
 export function maskVisibility(doc: ImageDocument, mask: TileSurface): OffscreenCanvas {
   const c = poolCanvas('mask.vis', doc.width, doc.height)
-  const g = c.getContext('2d')!
+  const g = ctx2d(c)
   g.fillStyle = '#fff'
   g.fillRect(0, 0, doc.width, doc.height)
   g.globalCompositeOperation = 'destination-out'
@@ -360,7 +366,7 @@ export function filterLayer(doc: ImageDocument, content: TileSurface, op: PixelO
   const full = rasterToCanvas(content, 'filter.src')
   if (!full) return content.tiles
   const out = poolCanvas('filter.out', full.rect.w, full.rect.h)
-  const g = out.getContext('2d')!
+  const g = ctx2d(out)
   drawWithOp(g, full.canvas, op)
   return applyToLayer(doc, content, canvasSource(out, full.rect.x, full.rect.y), full.rect, 'replace')
 }
@@ -370,7 +376,7 @@ export function copyPixels(doc: ImageDocument, merged: boolean): { canvas: Offsc
   const src = sampleSource(doc, merged)
   let r: Rect = { x: 0, y: 0, w: doc.width, h: doc.height }
   const c0 = poolCanvas('copy.masked', doc.width, doc.height)
-  const g0 = c0.getContext('2d')!
+  const g0 = ctx2d(c0)
   g0.drawImage(src, 0, 0)
   if (doc.selection) {
     g0.globalCompositeOperation = 'destination-in'
@@ -382,7 +388,7 @@ export function copyPixels(doc: ImageDocument, merged: boolean): { canvas: Offsc
   if (!bounds) return null
   r = bounds
   const out = new OffscreenCanvas(r.w, r.h)
-  out.getContext('2d')!.drawImage(c0, -r.x, -r.y)
+  ctx2d(out).drawImage(c0, -r.x, -r.y)
   return { canvas: out, x: r.x, y: r.y }
 }
 
@@ -477,7 +483,7 @@ function transformSurface(surface: TileSurface, t: DocTransform, W: number, H: n
       }
     }
     const dst = poolCanvas('xform.dst', nr.w, nr.h)
-    const g = dst.getContext('2d')!
+    const g = ctx2d(dst)
     g.save()
     draw(g)
     g.restore()

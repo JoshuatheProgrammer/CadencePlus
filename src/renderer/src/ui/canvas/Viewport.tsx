@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { docColor } from '@core/model'
 import { fitView, panBy, zoomAt, type View } from '@core/view'
 import { docRectOnTarget, renderDocument } from '../../engine/render'
 import { poolCanvas } from '../../engine/tiles'
@@ -43,6 +44,8 @@ export function Viewport() {
   const zoomOut = useEditor((s) => s.options.zoom.out)
   const brushSize = useEditor((s) => (s.tool === 'brush' || s.tool === 'eraser' || s.tool === 'clone' || s.tool === 'heal' ? s.options[s.tool].size : null))
   const doc = ds?.history.present ?? null
+  // The screen canvas uses the document's colour space, so wide-gamut displays show P3 colours.
+  const screenSpace = doc ? docColor(doc).space : 'srgb'
   const view = ds?.view ?? null
 
   // Size tracking
@@ -81,7 +84,7 @@ export function Viewport() {
         c.width = W
         c.height = H
       }
-      const ctx = c.getContext('2d')!
+      const ctx = c.getContext('2d', { colorSpace: screenSpace })!
       ctx.setTransform(1, 0, 0, 1, 0, 0)
       ctx.clearRect(0, 0, W, H)
       const xf = xfFor(view, size.w, size.h, size.dpr)
@@ -121,7 +124,7 @@ export function Viewport() {
       ctx.strokeRect(r.x - 0.5, r.y - 0.5, r.w + 1, r.h + 1)
     })
     return () => cancelAnimationFrame(raf)
-  }, [doc, view, size, stroke, stroke?.rev, filterPreview, showGrid, maskView, transform])
+  }, [doc, view, size, stroke, stroke?.rev, filterPreview, showGrid, maskView, transform, screenSpace])
 
   // Overlay render (ants animate while a selection exists)
   const frameRef = useRef(0)
@@ -311,7 +314,7 @@ export function Viewport() {
       }}
       aria-label={doc ? `${doc.name} canvas, ${toolDef(tool).label} tool` : 'Canvas'}
     >
-      <canvas ref={docCanvas} style={{ width: size.w, height: size.h }} />
+      <canvas ref={docCanvas} key={screenSpace} style={{ width: size.w, height: size.h }} />
       <canvas ref={ovCanvas} style={{ width: size.w, height: size.h, pointerEvents: 'none' }} />
       <TextEditor w={size.w} h={size.h} />
     </div>

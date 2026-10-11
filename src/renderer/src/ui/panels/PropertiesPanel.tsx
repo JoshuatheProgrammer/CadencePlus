@@ -5,7 +5,7 @@ import { selectionBounds } from '../../engine/selection'
 import * as A from '../../state/image-actions'
 import { useEditor } from '../../state/store'
 import { histogram } from '@core/lut'
-import type { ImageDocument } from '@core/model'
+import { docColor, type ImageDocument } from '@core/model'
 import { renderComposite } from '../../engine/render'
 import { AdjustmentEditor, type Histograms } from '../AdjustmentEditor'
 import { ShapeProps, TextContentField, TextStyleControls } from '../VectorControls'
@@ -221,13 +221,13 @@ export function PropertiesPanel() {
           <div className="prop-row">
             <label>Mode</label>
             <div className="ctrl">
-              <span className="value">RGB · 8 bits/channel</span>
+              <span className="value">RGB · {docColor(doc).depth} bits/channel</span>
             </div>
           </div>
           <div className="prop-row">
             <label>Color profile</label>
             <div className="ctrl">
-              <span className="value dim" title="Colour management (ICC profiles, 16-bit) is planned; pixels are treated as sRGB.">sRGB (unmanaged)</span>
+              <span className="value">{docColor(doc).space === 'srgb' ? 'sRGB IEC61966-2.1' : 'Display P3'}</span>
             </div>
           </div>
           <div className="prop-row">

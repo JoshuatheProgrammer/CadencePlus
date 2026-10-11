@@ -7,6 +7,7 @@ import * as D from './doc-actions'
 import * as A from './image-actions'
 import { activeDoc, activeDocState, get, set, setToolOption, toast, type PanelId, type ToolId } from './store'
 import { TOOL_LIST } from './tools'
+import { docColor, type DocColor } from '@core/model'
 import * as T from './transform-actions'
 import { commitText } from './vector-actions'
 
@@ -88,6 +89,10 @@ export const COMMANDS: Command[] = [
   { id: 'image.curves', label: 'Curves…', keys: ['Ctrl+M'], run: () => set({ dialog: { kind: 'adjust', adjustment: 'curves' } }), enabled: hasDoc },
   { id: 'image.invert', label: 'Invert', keys: ['Ctrl+I'], run: A.invertTarget, enabled: hasDoc },
   { id: 'image.desaturate', label: 'Desaturate', keys: ['Ctrl+Shift+U'], run: () => A.applyFilter('grayscale(1)', 'Desaturate'), enabled: hasDoc },
+  { id: 'image.mode8', label: '8 Bits/Channel', run: () => modeTo({ depth: 8 }, 'Convert to 8 Bits/Channel'), enabled: hasDoc },
+  { id: 'image.mode16', label: '16 Bits/Channel', run: () => modeTo({ depth: 16 }, 'Convert to 16 Bits/Channel'), enabled: hasDoc },
+  { id: 'image.toSrgb', label: 'sRGB IEC61966-2.1', run: () => modeTo({ space: 'srgb' }, 'Convert to sRGB'), enabled: hasDoc },
+  { id: 'image.toP3', label: 'Display P3', run: () => modeTo({ space: 'display-p3' }, 'Convert to Display P3'), enabled: hasDoc },
   { id: 'image.imageSize', label: 'Image Size…', keys: ['Ctrl+Alt+I'], run: () => set({ dialog: { kind: 'imageSize' } }), enabled: hasDoc },
   { id: 'image.canvasSize', label: 'Canvas Size…', keys: ['Ctrl+Alt+C'], run: () => set({ dialog: { kind: 'canvasSize' } }), enabled: hasDoc },
   { id: 'image.rotateCw', label: 'Rotate 90° Clockwise', run: () => A.transformImage({ kind: 'rotate', turns: 1 }, 'Rotate Canvas'), enabled: hasDoc },
@@ -214,6 +219,16 @@ export function setKeysFor(id: string, keys: string[] | null): void {
 export function resetAllKeys(): void {
   set({ keyOverrides: {} })
   void window.cadencePlus.setSetting('keymap', {})
+}
+
+function modeTo(patch: Partial<DocColor>, label: string): void {
+  const d = activeDoc()
+  if (d) A.convertDocColor({ ...docColor(d), ...patch }, label)
+}
+
+export function currentColor(): DocColor | null {
+  const d = activeDoc()
+  return d ? docColor(d) : null
 }
 
 function cycleDoc(dir: 1 | -1): void {

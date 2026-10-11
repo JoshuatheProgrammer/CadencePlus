@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { ADJUSTMENTS, adjustmentOp, blurFilter, defaultAdjustment, type AdjustmentKind } from '@core/adjustments'
-import { MAX_DIMENSION } from '@core/model'
+import { docColor, MAX_DIMENSION } from '@core/model'
 import { exportImage, type ExportFormat } from '../../engine/io'
 import { COMMANDS } from '../../state/commands'
 import { exportAs, formatBytes, newDocument, type BackgroundChoice } from '../../state/doc-actions'
@@ -37,6 +37,8 @@ function NewDocumentDialog() {
   const [h, setH] = useState(1080)
   const [ppi, setPpi] = useState(72)
   const [bg, setBg] = useState<BackgroundChoice>('white')
+  const [depth, setDepth] = useState<8 | 16>(8)
+  const [space, setSpace] = useState<'srgb' | 'display-p3'>('srgb')
   const bgColor = useEditor((s) => s.bg)
   useEffect(() => {
     const n = get().docs.length + 1
@@ -44,7 +46,7 @@ function NewDocumentDialog() {
   }, [])
   const mb = (w * h * 4) / 1024 ** 2
   const create = () => {
-    if (newDocument({ name, width: w, height: h, resolution: ppi, background: bg })) close()
+    if (newDocument({ name, width: w, height: h, resolution: ppi, background: bg, color: { depth, space } })) close()
   }
   return (
     <Modal
@@ -92,6 +94,17 @@ function NewDocumentDialog() {
         <div className="pair">
           <NumberInput value={ppi} min={1} max={2400} onChange={setPpi} /> <span className="unit">pixels/inch</span>
         </div>
+        <label>Color mode</label>
+        <div className="pair">
+          <select value={depth} onChange={(e) => setDepth(Number(e.target.value) as 8 | 16)} style={{ width: 150 }}>
+            <option value={8}>RGB · 8 bits/channel</option>
+            <option value={16}>RGB · 16 bits/channel</option>
+          </select>
+          <select value={space} onChange={(e) => setSpace(e.target.value as 'srgb' | 'display-p3')} style={{ flex: 1 }}>
+            <option value="srgb">sRGB IEC61966-2.1</option>
+            <option value="display-p3">Display P3 (wide gamut)</option>
+          </select>
+        </div>
         <label>Background</label>
         <select value={bg} onChange={(e) => setBg(e.target.value as BackgroundChoice)}>
           <option value="white">White</option>
@@ -101,7 +114,7 @@ function NewDocumentDialog() {
         </select>
         <label />
         <span className="note">
-          RGB · 8 bits/channel · {mb < 1024 ? `${mb.toFixed(1)} MB` : `${(mb / 1024).toFixed(2)} GB`} per full layer · max {MAX_DIMENSION.toLocaleString()} px per side
+          RGB · {depth} bits/channel · {mb * (depth / 8) < 1024 ? `${(mb * (depth / 8)).toFixed(1)} MB` : `${((mb * (depth / 8)) / 1024).toFixed(2)} GB`} per full layer · max {MAX_DIMENSION.toLocaleString()} px per side
         </span>
       </div>
     </Modal>
@@ -368,14 +381,16 @@ function FeatherDialog() {
 function ExportDialog() {
   const [format, setFormat] = useState<ExportFormat>('png')
   const [quality, setQuality] = useState(90)
+  const [sixteen, setSixteen] = useState(true)
   const [estimate, setEstimate] = useState<string>('…')
+  const color = docColor(activeDoc()!)
   useEffect(() => {
     let live = true
     setEstimate('…')
     const t = setTimeout(() => {
       const d = activeDoc()
       if (!d) return
-      exportImage(d, format, quality / 100)
+      exportImage(d, format, quality / 100, { sixteenBit: sixteen })
         .then((b) => live && setEstimate(formatBytes(b.length)))
         .catch((e: Error) => live && setEstimate(e.message))
     }, 200)
@@ -387,7 +402,7 @@ function ExportDialog() {
   const d = activeDoc()!
   const ok = () => {
     close()
-    void exportAs(format, quality / 100)
+    void exportAs(format, quality / 100, { sixteenBit: sixteen })
   }
   return (
     <Modal
@@ -421,6 +436,19 @@ function ExportDialog() {
         <label>Image</label>
         <span className="note">
           {d.width} × {d.height} px · all visible layers, flattened{format === 'jpeg' ? ' · transparency becomes white' : ''}
+        </span>
+        {format === 'png' && color.depth === 16 && (
+          <>
+            <label>Bit depth</label>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--c-text)' }}>
+              <input type="checkbox" checked={sixteen} onChange={(e) => setSixteen(e.target.checked)} /> 16 bits/channel
+            </label>
+          </>
+        )}
+        <label>Colour</label>
+        <span className="note">
+          {color.space === 'display-p3' ? 'Display P3, profile embedded' : 'sRGB'}
+          {format !== 'png' || color.depth === 8 || !sixteen ? ' · 8 bits/channel' : ' · 16 bits/channel'}
         </span>
         <label>File size</label>
         <span className="note">{estimate}</span>

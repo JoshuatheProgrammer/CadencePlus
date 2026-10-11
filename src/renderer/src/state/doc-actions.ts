@@ -6,10 +6,11 @@ import type { Draft } from 'immer'
 import { EditError } from '@core/edit'
 import { PROJECT_EXTENSION } from '@core/format'
 import { apply, createHistory, jumpTo, redo as hRedo, replace, undo as hUndo } from '@core/history'
-import { collectTileIds, createDocument, type ImageDocument } from '@core/model'
+import { collectTileIds, createDocument, DEFAULT_COLOR, docColor, type DocColor, type ImageDocument } from '@core/model'
 import { collectMaskIds } from '@core/selection'
 import { clampZoom, fillView, fitView, formatZoom, nextZoomStep, type View } from '@core/view'
-import { baseName, decodeImage, decodeProject, documentFromBitmap, encodeProject, exportImage, extOf, type ExportFormat } from '../engine/io'
+import { baseName, decodeProject, encodeProject, exportImage, extOf, importImage, type ExportFormat, type ExportOptions } from '../engine/io'
+import { withFormat } from '../engine/format'
 import { collectGarbage, solidTiles } from '../engine/tiles'
 import { activeDocState, confirm, get, isDirty, set, toast, updateDocState, type DocState } from './store'
 
@@ -159,18 +160,21 @@ export function addDocument(doc: ImageDocument, opts: { path?: string | null; so
 
 export type BackgroundChoice = 'white' | 'black' | 'background' | 'transparent'
 
-export function newDocument(o: { name: string; width: number; height: number; resolution: number; background: BackgroundChoice }): boolean {
+export function newDocument(o: { name: string; width: number; height: number; resolution: number; background: BackgroundChoice; color?: DocColor }): boolean {
   const color = o.background === 'white' ? '#ffffff' : o.background === 'black' ? '#000000' : o.background === 'background' ? get().bg : null
   try {
     const w = Math.round(o.width)
     const h = Math.round(o.height)
+    const fmt = o.color ?? DEFAULT_COLOR
     const doc = createDocument({
       name: o.name,
       width: w,
       height: h,
       resolution: o.resolution,
-      tiles: color ? solidTiles(w, h, color) : undefined,
-      baseName: color ? 'Background' : 'Layer 1'
+      // The background tile is built in the new document's format.
+      tiles: color ? withFormat(fmt, () => solidTiles(w, h, color)) : undefined,
+      baseName: color ? 'Background' : 'Layer 1',
+      color: fmt
     })
     addDocument(doc, { label: 'New' })
     return true
@@ -200,10 +204,9 @@ export async function openPaths(paths: string[]): Promise<void> {
           const doc = await decodeProject(bytes)
           addDocument(doc, { path })
         } else {
-          const bmp = await decodeImage(bytes, ext)
-          const doc = documentFromBitmap(baseName(path), bmp)
-          bmp.close()
+          const { doc, note } = await importImage(bytes, ext, baseName(path))
           addDocument(doc, { sourcePath: path })
+          if (note) toast(`${baseName(path)}: ${note}`, 'info')
         }
       })
       void rememberRecent(path)
@@ -291,20 +294,20 @@ export function formatBytes(n: number): string {
   return `${(n / 1024 ** 3).toFixed(2)} GB`
 }
 
-export async function exportAs(format: ExportFormat, quality: number): Promise<boolean> {
+export async function exportAs(format: ExportFormat, quality: number, opts: ExportOptions = {}): Promise<boolean> {
   const ds = activeDocState()
   if (!ds) return false
   const ext = format === 'jpeg' ? 'jpg' : format
   const path = await window.cadencePlus.exportDialog(displayName(ds), ext)
-  return path ? exportTo(path, format, quality) : false
+  return path ? exportTo(path, format, quality, opts) : false
 }
 
-export async function exportTo(path: string, format: ExportFormat, quality: number): Promise<boolean> {
+export async function exportTo(path: string, format: ExportFormat, quality: number, opts: ExportOptions = {}): Promise<boolean> {
   const ds = activeDocState()
   if (!ds) return false
   set({ busy: `Exporting ${baseName(path)}…` })
   try {
-    const bytes = await exportImage(ds.history.present, format, quality)
+    const bytes = await exportImage(ds.history.present, format, quality, opts)
     await window.cadencePlus.writeFile(path, bytes)
     toast(`Exported ${path.replace(/^.*[\\/]/, '')} (${formatBytes(bytes.length)})`, 'success')
     return true
@@ -345,6 +348,7 @@ export function titleFor(ds: DocState | null): string {
   if (!ds) return ''
   const doc = ds.history.present
   const layer = doc.layers.find((l) => l.id === doc.activeLayerId)
-  const part = doc.target === 'mask' && layer?.mask ? `${layer.name}, Layer Mask/8` : `${layer?.name ?? '—'}, RGB/8`
+  const bits = docColor(doc).depth
+  const part = doc.target === 'mask' && layer?.mask ? `${layer.name}, Layer Mask/${bits}` : `${layer?.name ?? '—'}, RGB/${bits}`
   return `${displayName(ds)}${isDirty(ds) ? ' •' : ''} @ ${formatZoom(ds.view?.zoom ?? 1)} (${part})`
 }

@@ -6,7 +6,9 @@
  * of hundreds of downscaled tiles.
  */
 import { parseTileKey, TILE, type TileMap, type TileSurface } from '@core/model'
+import { formatKey } from './format'
 import { getTile } from './tiles'
+import { ctx2d } from './format'
 
 export interface MipEntry {
   tiles: TileMap
@@ -83,7 +85,7 @@ function evict(keep: string): void {
 
 /** The layer at `level`, up to date with its tiles (null if empty or too large). */
 export function layerMip(layerId: string, c: TileSurface, level: number): MipEntry | null {
-  const key = `${layerId}|${level}`
+  const key = `${layerId}|${level}|${formatKey()}`
   let e = cache.get(key)
   if (e && e.tiles === c.tiles) {
     e.used = ++clock
@@ -102,14 +104,14 @@ export function layerMip(layerId: string, c: TileSurface, level: number): MipEnt
       e.canvas.width = e.canvas.height = 1
     }
     e = { tiles: c.tiles, level, canvas: new OffscreenCanvas(cols * cell, rows * cell), tx0: b.tx0, ty0: b.ty0, cols, rows, used: 0 }
-    const g = e.canvas.getContext('2d')!
+    const g = ctx2d(e.canvas)
     g.imageSmoothingQuality = 'high'
     for (const [k, id] of Object.entries(c.tiles)) drawCell(g, e, k, id)
     cache.set(key, e)
     bytes += sizeOf(e)
   } else {
     // Patch only the cells whose tile id changed.
-    const g = e.canvas.getContext('2d')!
+    const g = ctx2d(e.canvas)
     g.imageSmoothingQuality = 'high'
     const old = e.tiles
     for (const k of Object.keys(old)) if (old[k] !== c.tiles[k]) drawCell(g, e, k, c.tiles[k])

@@ -12,6 +12,7 @@ import { applyToLayer, colorSource } from './pixels'
 import { maskFromCanvas, selectionBounds, selectionMask } from './selection'
 import { drawTiles, rasterToCanvas, tilesFromCanvas } from './tiles'
 import { vectorSize } from './vector'
+import { ctx2d } from './format'
 
 export interface FloatPart {
   /** Lifted pixels; local (0,0) sits at document `rect.x, rect.y` before transforming. */
@@ -59,7 +60,7 @@ export function partMatrix(m: Affine, main: Rect, part: Rect): Affine {
 }
 
 function trimmed(c: OffscreenCanvas): Rect | null {
-  const d = c.getContext('2d')!.getImageData(0, 0, c.width, c.height).data
+  const d = ctx2d(c).getImageData(0, 0, c.width, c.height).data
   return maskBounds(d, c.width, c.height, 4, 3)
 }
 
@@ -69,7 +70,7 @@ function liftWhole(s: TileSurface): FloatPart | null {
   const t = trimmed(src.canvas)
   if (!t) return null
   const canvas = new OffscreenCanvas(t.w, t.h)
-  canvas.getContext('2d')!.drawImage(src.canvas, -t.x, -t.y)
+  ctx2d(canvas).drawImage(src.canvas, -t.x, -t.y)
   return { canvas, rect: { x: src.rect.x + t.x, y: src.rect.y + t.y, w: t.w, h: t.h }, remainder: {} }
 }
 
@@ -84,18 +85,18 @@ export function beginFloat(doc: ImageDocument, l: Layer, docId: string): FloatSt
   if (doc.selection) {
     const sel = selectionMask(doc.selection, doc.width, doc.height)
     const c0 = new OffscreenCanvas(doc.width, doc.height)
-    const g0 = c0.getContext('2d')!
+    const g0 = ctx2d(c0)
     drawTiles(g0, surface, 0, 0)
     g0.globalCompositeOperation = 'destination-in'
     g0.drawImage(sel, 0, 0)
     const t = trimmed(c0)
     if (!t) return null
     const canvas = new OffscreenCanvas(t.w, t.h)
-    canvas.getContext('2d')!.drawImage(c0, -t.x, -t.y)
+    ctx2d(canvas).drawImage(c0, -t.x, -t.y)
     const remainder = applyToLayer(doc, surface, colorSource('#000'), { x: 0, y: 0, w: doc.width, h: doc.height }, 'erase', 1, doc.selection)
     const sb = selectionBounds(doc.selection, doc.width, doc.height)!
     const selCanvas = new OffscreenCanvas(sb.w, sb.h)
-    selCanvas.getContext('2d')!.drawImage(sel, -sb.x, -sb.y)
+    ctx2d(selCanvas).drawImage(sel, -sb.x, -sb.y)
     return { kind: 'raster', docId, layerId: l.id, pixels: { canvas, rect: t, remainder }, mask: null, selection: { canvas: selCanvas, rect: sb }, fromSelection: true }
   }
   const pixels = liftWhole(surface)
@@ -108,7 +109,7 @@ function commitPart(part: FloatPart, origin: { x: number; y: number }, m: Affine
   const fb = transformedBounds(m, part.canvas.width, part.canvas.height)
   const u = unionRect(fb, rasterBounds({ ...origin, tiles: part.remainder }))!
   const c = new OffscreenCanvas(u.w, u.h)
-  const g = c.getContext('2d')!
+  const g = ctx2d(c)
   drawTiles(g, { ...origin, tiles: part.remainder }, -u.x, -u.y)
   // Whole-pixel transforms (moves, flips, 90° turns) copy pixels exactly.
   const exact = exactPixelMatrix(m)
@@ -138,7 +139,7 @@ export function commitFloat(l: Layer, fs: RasterFloat, m: Affine, selection: Sel
     const sm = exactPixelMatrix(sm0) ?? sm0
     const fb = transformedBounds(sm, fs.selection.canvas.width, fs.selection.canvas.height)
     const c = new OffscreenCanvas(fb.w, fb.h)
-    const g = c.getContext('2d')!
+    const g = ctx2d(c)
     g.imageSmoothingEnabled = sm === sm0
     g.setTransform(sm.a, sm.b, sm.c, sm.d, sm.e - fb.x, sm.f - fb.y)
     g.drawImage(fs.selection.canvas, 0, 0)

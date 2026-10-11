@@ -130,7 +130,17 @@ export interface ImageDocument {
   selection: Selection | null
   /** Which part of the active layer edits go to (missing = pixels). */
   target?: 'pixels' | 'mask'
+  /** Working colour: bits per channel and colour space (missing = 8-bit sRGB). */
+  color?: DocColor
 }
+
+export interface DocColor {
+  depth: 8 | 16
+  space: 'srgb' | 'display-p3'
+}
+
+export const DEFAULT_COLOR: DocColor = { depth: 8, space: 'srgb' }
+export const docColor = (d: { color?: DocColor }): DocColor => d.color ?? DEFAULT_COLOR
 
 export interface Rect {
   x: number
@@ -155,7 +165,7 @@ export function checkDimensions(width: number, height: number): void {
 }
 
 /** A document whose first layer has the given tiles (or is empty). */
-export function createDocument(opts: { name: string; width: number; height: number; resolution?: number; baseName?: string; tiles?: TileMap }): ImageDocument {
+export function createDocument(opts: { name: string; width: number; height: number; resolution?: number; baseName?: string; tiles?: TileMap; color?: DocColor }): ImageDocument {
   const width = Math.round(opts.width)
   const height = Math.round(opts.height)
   checkDimensions(width, height)
@@ -168,7 +178,8 @@ export function createDocument(opts: { name: string; width: number; height: numb
     resolution: opts.resolution ?? 72,
     layers: [base],
     activeLayerId: base.id,
-    selection: null
+    selection: null,
+    ...(opts.color && (opts.color.depth !== 8 || opts.color.space !== 'srgb') ? { color: opts.color } : {})
   }
 }
 
