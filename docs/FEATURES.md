@@ -112,3 +112,5 @@ Suites: 49 unit (`npm test`) · 58 end-to-end (`npm run e2e`), all passing.
 | 3 | Colour management: 16-bit/float pipeline, ICC profiles, soft-proofing |
 | 4 | PSD import/export, TIFF, camera RAW |
 | 5 | Monorepo with Cadence (shared `ui/` and `core/` packages) |
+| 6 | Retouching tools and filters: dodge/burn, sponge, smudge, blur/sharpen tools, history brush, polygonal lasso, quick mask, Color Range, Unsharp Mask, noise, motion blur, high pass |
+| 7 | Layer styles (drop shadow, stroke, glows, colour overlay), multi-layer selection, export presets (scale, format batches) |
