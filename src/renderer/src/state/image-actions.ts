@@ -9,7 +9,7 @@ import * as S from '@core/selection'
 import type { BrushOptions } from '../engine/brush'
 import type { Stroke } from '../engine/brush'
 import { canvasToPng, decodeImage } from '../engine/io'
-import { applyMaskTiles, applyToLayer, bucketSource, canvasSource, colorSource, copyPixels, filterLayer, invertMaskTiles, layerCanvas, maskTilesFromSelection, maskVisibility, mergeToTiles, sampleColor, transformLayers, wandMask, type DocTransform, type Source } from '../engine/pixels'
+import { rasterizeTiles, applyMaskTiles, applyToLayer, bucketSource, canvasSource, colorSource, copyPixels, filterLayer, invertMaskTiles, layerCanvas, maskTilesFromSelection, maskVisibility, mergeToTiles, sampleColor, transformLayers, wandMask, type DocTransform, type Source } from '../engine/pixels'
 import { maskFromCanvas, selectionBounds } from '../engine/selection'
 import { solidTiles, tilesFromCanvas } from '../engine/tiles'
 import { addDocument, attempt, edit, holdingTiles, silent } from './doc-actions'
@@ -71,6 +71,10 @@ export function nudgeActive(dx: number, dy: number): void {
   const d = doc()
   const l = d && activeLayer(d)
   if (!d || !l) return
+  if (l.content.type === 'text' || l.content.type === 'shape') {
+    const p = l.content.params
+    return void edit('Nudge', (x) => E.setVectorParams(x, l.id, { ...p, cx: p.cx + dx, cy: p.cy + dy }), `nudge:${l.id}`)
+  }
   if (l.content.type !== 'raster') return void toast(`“${l.name}” covers the whole canvas and cannot be moved.`, 'warn')
   edit('Nudge', (x) => E.setLayerPosition(x, l.id, (l.content as { x: number }).x + dx, (l.content as { y: number }).y + dy), `nudge:${l.id}`)
 }
@@ -107,8 +111,9 @@ export function rasterizeActive(): void {
   const d = doc()
   const l = d && activeLayer(d)
   if (!d || !l) return
-  if (l.content.type !== 'fill') return void toast(l.content.type === 'raster' ? `“${l.name}” is already a pixel layer.` : 'Adjustment layers have no pixels of their own to rasterize.', 'warn')
-  const tiles = tilesFromCanvas(layerCanvas(d, l), 0, 0, 0, 0)
+  if (l.content.type === 'raster') return void toast(`“${l.name}” is already a pixel layer.`, 'warn')
+  if (l.content.type === 'adjustment') return void toast('Adjustment layers have no pixels of their own to rasterize.', 'warn')
+  const tiles = rasterizeTiles(d, l)
   edit('Rasterize Layer', (x) => E.rasterizeLayer(x, l.id, tiles))
 }
 
@@ -306,7 +311,7 @@ export function transformImage(t: DocTransform, label: string): void {
   const d = doc()
   if (!d) return
   const r = attempt(() => transformLayers(d, t))
-  if (r) edit(label, (x) => E.transformDocument(x, r.width, r.height, r.layers, r.masks))
+  if (r) edit(label, (x) => E.transformDocument(x, r.width, r.height, r.layers, r.masks, r.vectors))
 }
 
 // ---------------------------------------------------------------------------

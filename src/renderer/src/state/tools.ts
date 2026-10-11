@@ -27,8 +27,8 @@ export const TOOLS: (ToolDef | null)[] = [
   { id: 'gradient', label: 'Gradient', key: 'G', icon: I.IconGradient, hint: 'Drag to draw a gradient from the foreground colour · Shift snaps to 45°' },
   { id: 'bucket', label: 'Paint Bucket', key: 'Shift+G', icon: I.IconBucket, hint: 'Click to fill similar colours with the foreground colour' },
   null,
-  { id: 'text', label: 'Type', key: 'T', icon: I.IconText, unavailable: 'The Type tool is not built yet (planned for Phase 2).', hint: '' },
-  { id: 'shape', label: 'Shape', key: 'U', icon: I.IconShape, unavailable: 'Shape tools are not built yet (planned for Phase 2).', hint: '' },
+  { id: 'text', label: 'Type', key: 'T', icon: I.IconText, hint: 'Click to add type (or click type to edit it) · Ctrl+Enter or click away to finish · Esc cancels' },
+  { id: 'shape', label: 'Shape', key: 'U', icon: I.IconShape, hint: 'Drag to draw · Shift constrains · Alt draws from the centre · fills with the foreground colour, strokes with the background colour' },
   null,
   { id: 'hand', label: 'Hand', key: 'H', icon: I.IconHand, hint: 'Drag to scroll · hold Space with any tool' },
   { id: 'zoom', label: 'Zoom', key: 'Z', icon: I.IconZoom, hint: 'Click to zoom in · Alt+click zooms out · drag to zoom to an area' }

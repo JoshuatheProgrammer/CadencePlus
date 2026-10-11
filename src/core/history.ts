@@ -84,3 +84,10 @@ export function jumpTo<T>(h: History<T>, index: number): History<T> {
   while (out.past.length < index && out.future.length) out = redo(out)
   return out
 }
+
+/** Removes the latest step without keeping it for redo (e.g. a type layer that was never typed into). */
+export function dropLast<T>(h: History<T>): History<T> {
+  const prev = h.past[h.past.length - 1]
+  if (!prev) return h
+  return { past: h.past.slice(0, -1), present: prev.state, presentLabel: prev.label, future: [], revision: h.revision + 1, coalesceKey: null, limit: h.limit }
+}

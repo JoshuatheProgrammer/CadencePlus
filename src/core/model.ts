@@ -7,6 +7,8 @@
  * snapshot-based undo history records exactly the changed tiles per step.
  */
 import type { Adjustment } from './adjustments'
+import type { TransformParams } from './affine'
+import type { ShapeData, TextData } from './vector'
 import type { Selection } from './selection'
 
 export const TILE = 256
@@ -72,6 +74,13 @@ export type LayerContent =
   | { type: 'fill'; color: string }
   /** Non-destructive adjustment applied to everything below. */
   | { type: 'adjustment'; adjustment: Adjustment }
+  /** Live type, placed by `params` (its box size comes from the text layout). */
+  | { type: 'text'; text: TextData; params: TransformParams }
+  /** A vector shape, placed by `params`. */
+  | { type: 'shape'; shape: ShapeData; params: TransformParams }
+
+export type VectorContent = Extract<LayerContent, { type: 'text' | 'shape' }>
+export const isVector = (c: LayerContent): c is VectorContent => c.type === 'text' || c.type === 'shape'
 
 /** Pixels addressed by tiles from an origin; shared by raster content and masks. */
 export interface TileSurface {

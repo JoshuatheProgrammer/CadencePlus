@@ -6,6 +6,7 @@ import { set, setToolOption, useEditor, type ToolOptions } from '../state/store'
 import { toolDef } from '../state/tools'
 import { cancelTransform, commitTransform, updateTransform } from '../state/transform-actions'
 import { NumberInput, SliderField } from './components'
+import { ShapeOptions, TextStyleControls } from './VectorControls'
 import { IconCheck, IconClose, IconTransform } from './icons'
 
 function Seg<T extends string>({ value, options, onChange }: { value: T; options: { v: T; label: string; title?: string }[]; onChange: (v: T) => void }) {
@@ -114,6 +115,22 @@ export function OptionsBar() {
   return <ToolOptionsBar />
 }
 
+/** Type options show the active type layer's style, or the style for new type. */
+function TextOptions() {
+  const style = useEditor((s) => {
+    const d = s.docs.find((x) => x.id === s.activeId)?.history.present
+    const l = d?.layers.find((x) => x.id === d.activeLayerId)
+    return l?.content.type === 'text' ? l.content.text : s.options.text
+  })
+  const fg = useEditor((s) => s.fg)
+  const isLayer = useEditor((s) => {
+    const d = s.docs.find((x) => x.id === s.activeId)?.history.present
+    return d?.layers.find((x) => x.id === d.activeLayerId)?.content.type === 'text'
+  })
+  if (!isLayer) return <TextStyleControls style={{ ...style, color: fg }} compact />
+  return <TextStyleControls style={style} compact />
+}
+
 function ToolOptionsBar() {
   const tool = useEditor((s) => s.tool)
   const o = useEditor((s) => s.options)
@@ -220,6 +237,12 @@ function ToolOptionsBar() {
           <Check label="All layers" checked={o.bucket.sampleAll} onChange={(v) => setToolOption('bucket', { sampleAll: v })} />
         </>
       )
+      break
+    case 'text':
+      body = <TextOptions />
+      break
+    case 'shape':
+      body = <ShapeOptions />
       break
     case 'hand':
       body = <ViewButtons />

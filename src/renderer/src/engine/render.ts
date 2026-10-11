@@ -9,9 +9,11 @@
  */
 import { adjustmentOp, type PixelOp } from '@core/adjustments'
 import { parseTileKey, tileKey, TILE, type ImageDocument, type Layer, type TileSurface } from '@core/model'
-import type { Affine } from '@core/affine'
+import type { Affine, TransformParams } from '@core/affine'
+import { isVector } from '@core/model'
 import { layerMip, mipLevel } from './mips'
 import { drawWithOp } from './ops'
+import { drawVector } from './vector'
 import { partMatrix, type FloatState } from './transform'
 import { selectionMask } from './selection'
 import { getTile, poolCanvas, type Ctx2D } from './tiles'
@@ -52,8 +54,8 @@ export interface RenderOptions {
   onlyLayer?: string
   /** Show this layer's mask as greyscale instead of the image (Alt+click a mask). */
   maskView?: string | null
-  /** Floating pixels being transformed: `m` maps the float's local pixels to the document. */
-  float?: { fs: FloatState; m: Affine } | null
+  /** Content being transformed: `m` maps the float's local box to the document; `params` places vector layers. */
+  float?: { fs: FloatState; m: Affine; params: TransformParams } | null
 }
 
 type FloatPreview = NonNullable<RenderOptions['float']>
@@ -127,9 +129,12 @@ export function drawRaster(ctx: Ctx2D, c: TileSurface, xf: Xf, W: number, H: num
   }
 }
 
-/** Draws a raster or fill layer's own pixels (no opacity/blend handling). */
+const xfAffine = (xf: Xf): Affine => ({ a: xf.scale, b: 0, c: 0, d: xf.scale, e: xf.ox, f: xf.oy })
+
+/** Draws a layer's own pixels (no opacity/blend handling). */
 function drawContent(ctx: Ctx2D, l: Layer, doc: ImageDocument, xf: Xf, W: number, H: number): void {
   if (l.content.type === 'raster') drawRaster(ctx, l.content, xf, W, H, l.id)
+  else if (isVector(l.content)) drawVector(ctx, l.content, xfAffine(xf))
   else if (l.content.type === 'fill') {
     const r = docRectOnTarget(doc, xf)
     ctx.fillStyle = l.content.color
@@ -165,7 +170,7 @@ function strokeOnTarget(stroke: StrokePreview, doc: ImageDocument, xf: Xf, W: nu
 function hideOnTarget(l: Layer, doc: ImageDocument, xf: Xf, W: number, H: number, stroke: StrokePreview | null, fl: FloatPreview | null = null): OffscreenCanvas {
   const hc = poolCanvas('render.hide', W, H)
   const hg = hc.getContext('2d')!
-  if (l.mask && fl?.fs.mask) {
+  if (l.mask && fl?.fs.kind === 'raster' && fl.fs.mask) {
     drawRaster(hg, { x: l.mask.x, y: l.mask.y, tiles: fl.fs.mask.remainder }, xf, W, H, `${l.id}#maskrem`)
     drawFloatPart(hg, fl.fs.mask.canvas, partMatrix(fl.m, fl.fs.pixels.rect, fl.fs.mask.rect), xf)
   } else if (l.mask) drawRaster(hg, l.mask, xf, W, H, `${l.id}#mask`)
@@ -248,7 +253,7 @@ export function renderDocument(target: OffscreenCanvas | HTMLCanvasElement, doc:
     }
 
     const fp = o.filterPreview && o.filterPreview.layerId === l.id ? o.filterPreview : null
-    const fl = o.float && o.float.fs.layerId === l.id && l.content.type === 'raster' ? o.float : null
+    const fl = o.float && o.float.fs.layerId === l.id ? o.float : null
     if (!stroke && !fp && !masked && !fl) {
       ctx.save()
       ctx.globalAlpha = l.opacity
@@ -261,10 +266,11 @@ export function renderDocument(target: OffscreenCanvas | HTMLCanvasElement, doc:
     // Layers being edited render through a temporary canvas first.
     const tmp = poolCanvas('render.layer', W, H)
     const tg = tmp.getContext('2d')!
-    if (fl && l.content.type === 'raster') {
+    if (fl && fl.fs.kind === 'raster' && l.content.type === 'raster') {
       drawRaster(tg, { x: l.content.x, y: l.content.y, tiles: fl.fs.pixels.remainder }, o.xf, W, H, `${l.id}#rem`)
       drawFloatPart(tg, fl.fs.pixels.canvas, fl.m, o.xf)
-    } else drawContent(tg, l, doc, o.xf, W, H)
+    } else if (fl && isVector(l.content)) drawVector(tg, l.content, xfAffine(o.xf), fl.params)
+    else drawContent(tg, l, doc, o.xf, W, H)
 
     if (fp) {
       const filtered = poolCanvas('render.filtered', W, H)

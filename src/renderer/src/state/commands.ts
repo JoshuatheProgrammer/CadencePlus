@@ -8,6 +8,7 @@ import * as A from './image-actions'
 import { activeDoc, activeDocState, get, set, setToolOption, toast, type PanelId, type ToolId } from './store'
 import { TOOL_LIST } from './tools'
 import * as T from './transform-actions'
+import { commitText } from './vector-actions'
 
 export interface Command {
   id: string
@@ -45,6 +46,7 @@ function setTool(id: ToolId): void {
   const t = TOOL_LIST.find((x) => x.id === id)
   if (!t) return
   if (t.unavailable) return void toast(t.unavailable, 'info')
+  if (get().textEdit) commitText()
   set({ tool: id })
 }
 

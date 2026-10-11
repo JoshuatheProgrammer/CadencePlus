@@ -4,13 +4,14 @@
  * through a matrix while the user edits it, and resampled into tiles once on
  * commit. A whole-pixel move commits without resampling.
  */
-import { exactPixelMatrix, multiply, transformedBounds, type Affine } from '@core/affine'
+import { exactPixelMatrix, multiply, transformedBounds, type Affine, type TransformParams } from '@core/affine'
 import { maskBounds } from '@core/flood'
-import { rasterBounds, unionRect, type ImageDocument, type Layer, type Rect, type TileMap, type TileSurface } from '@core/model'
+import { isVector, rasterBounds, unionRect, type ImageDocument, type Layer, type Rect, type TileMap, type TileSurface } from '@core/model'
 import type { Selection } from '@core/selection'
 import { applyToLayer, colorSource } from './pixels'
 import { maskFromCanvas, selectionBounds, selectionMask } from './selection'
 import { drawTiles, rasterToCanvas, tilesFromCanvas } from './tiles'
+import { vectorSize } from './vector'
 
 export interface FloatPart {
   /** Lifted pixels; local (0,0) sits at document `rect.x, rect.y` before transforming. */
@@ -20,7 +21,21 @@ export interface FloatPart {
   remainder: TileMap
 }
 
-export interface FloatState {
+export type FloatState = RasterFloat | VectorFloat
+
+/** Type and shape layers transform by editing their placement: nothing is lifted. */
+export interface VectorFloat {
+  kind: 'vector'
+  docId: string
+  layerId: string
+  /** Local box size. */
+  w: number
+  h: number
+  start: TransformParams
+}
+
+export interface RasterFloat {
+  kind: 'raster'
   docId: string
   layerId: string
   pixels: FloatPart
@@ -32,6 +47,11 @@ export interface FloatState {
 }
 
 const translate = (x: number, y: number): Affine => ({ a: 1, b: 0, c: 0, d: 1, e: x, f: y })
+
+/** Size of the box being transformed. */
+export function floatSize(fs: FloatState): { w: number; h: number } {
+  return fs.kind === 'vector' ? { w: fs.w, h: fs.h } : { w: fs.pixels.canvas.width, h: fs.pixels.canvas.height }
+}
 
 /** Matrix for a part, given the transform of the main pixels (local → document). */
 export function partMatrix(m: Affine, main: Rect, part: Rect): Affine {
@@ -55,6 +75,10 @@ function liftWhole(s: TileSurface): FloatPart | null {
 
 /** Lifts the active layer (or its selected pixels) into a float; null when there is nothing to lift. */
 export function beginFloat(doc: ImageDocument, l: Layer, docId: string): FloatState | null {
+  if (isVector(l.content)) {
+    const s = vectorSize(l.content)
+    return { kind: 'vector', docId, layerId: l.id, w: s.w, h: s.h, start: l.content.params }
+  }
   if (l.content.type !== 'raster') return null
   const surface = l.content
   if (doc.selection) {
@@ -72,12 +96,12 @@ export function beginFloat(doc: ImageDocument, l: Layer, docId: string): FloatSt
     const sb = selectionBounds(doc.selection, doc.width, doc.height)!
     const selCanvas = new OffscreenCanvas(sb.w, sb.h)
     selCanvas.getContext('2d')!.drawImage(sel, -sb.x, -sb.y)
-    return { docId, layerId: l.id, pixels: { canvas, rect: t, remainder }, mask: null, selection: { canvas: selCanvas, rect: sb }, fromSelection: true }
+    return { kind: 'raster', docId, layerId: l.id, pixels: { canvas, rect: t, remainder }, mask: null, selection: { canvas: selCanvas, rect: sb }, fromSelection: true }
   }
   const pixels = liftWhole(surface)
   if (!pixels) return null
   const mask = l.mask ? liftWhole(l.mask) : null
-  return { docId, layerId: l.id, pixels, mask, selection: null, fromSelection: false }
+  return { kind: 'raster', docId, layerId: l.id, pixels, mask, selection: null, fromSelection: false }
 }
 
 function commitPart(part: FloatPart, origin: { x: number; y: number }, m: Affine): TileMap {
@@ -103,7 +127,7 @@ export interface FloatResult {
 }
 
 /** Resamples the float through `m` (pixels local → document) into new tiles. */
-export function commitFloat(l: Layer, fs: FloatState, m: Affine, selection: Selection | null): FloatResult {
+export function commitFloat(l: Layer, fs: RasterFloat, m: Affine, selection: Selection | null): FloatResult {
   if (l.content.type !== 'raster') throw new Error('Free Transform needs a pixel layer.')
   const tiles = commitPart(fs.pixels, l.content, m)
   const maskTiles = fs.mask && l.mask ? commitPart(fs.mask, l.mask, partMatrix(m, fs.pixels.rect, fs.mask.rect)) : null

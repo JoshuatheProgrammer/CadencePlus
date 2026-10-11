@@ -4,8 +4,10 @@
  * Pixel-producing edits receive tile maps already built by the renderer.
  */
 import type { Adjustment } from './adjustments'
-import { checkDimensions, createLayer, findLayer, uid, type BlendMode, type ImageDocument, type Layer, type LayerContent, type LayerMask, type Rect, type TileMap, type TileSurface } from './model'
+import { checkDimensions, createLayer, findLayer, isVector, uid, type BlendMode, type ImageDocument, type Layer, type LayerContent, type LayerMask, type Rect, type TileMap, type TileSurface } from './model'
+import type { TransformParams } from './affine'
 import { translate, type Selection } from './selection'
+import { keepTopLeft, type ShapeData, type TextData } from './vector'
 
 export class EditError extends Error {}
 
@@ -25,7 +27,9 @@ export function unlocked(doc: ImageDocument, id: string | null, what: string): L
 export function rasterTarget(doc: ImageDocument, what: string): Layer & { content: Extract<LayerContent, { type: 'raster' }> } {
   const l = unlocked(doc, doc.activeLayerId, what)
   if (l.content.type !== 'raster') {
-    throw new EditError(`“${l.name}” is ${l.content.type === 'fill' ? 'a fill layer' : 'an adjustment layer'}. Choose a pixel layer, or rasterize it (Layer → Rasterize Layer) to ${what}.`)
+    const kind = { fill: 'a fill layer', adjustment: 'an adjustment layer', text: 'a type layer', shape: 'a shape layer' }[l.content.type]
+    const fix = l.content.type === 'adjustment' ? 'Choose a pixel layer' : 'Choose a pixel layer, or rasterize it (Layer → Rasterize Layer)'
+    throw new EditError(`“${l.name}” is ${kind}. ${fix} to ${what}.`)
   }
   if (!l.visible) throw new EditError(`“${l.name}” is hidden. Show it to ${what}.`)
   return l as Layer & { content: Extract<LayerContent, { type: 'raster' }> }
@@ -188,6 +192,32 @@ export function setLayerPosition(doc: ImageDocument, id: string, x: number, y: n
   l.content.y = ny
 }
 
+/** Places a type or shape layer. */
+export function setVectorParams(doc: ImageDocument, id: string, params: TransformParams): void {
+  const l = unlocked(doc, id, 'move it')
+  if (!isVector(l.content)) throw new EditError(`“${l.name}” is not a type or shape layer.`)
+  const dx = params.cx - l.content.params.cx
+  const dy = params.cy - l.content.params.cy
+  // A plain move carries the mask along, as for pixel layers.
+  if (params.sx === l.content.params.sx && params.sy === l.content.params.sy && params.rot === l.content.params.rot) shiftMask(l.mask, dx, dy)
+  l.content.params = params
+}
+
+/** Changes a type layer's text or style; `oldSize`/`newSize` keep its top-left corner in place. */
+export function setText(doc: ImageDocument, id: string, text: TextData, oldSize: { w: number; h: number }, newSize: { w: number; h: number }): void {
+  const l = unlocked(doc, id, 'edit its text')
+  if (l.content.type !== 'text') throw new EditError(`“${l.name}” is not a type layer.`)
+  l.content.params = keepTopLeft(l.content.params, oldSize.w, oldSize.h, newSize.w, newSize.h)
+  l.content.text = text
+}
+
+export function setShape(doc: ImageDocument, id: string, shape: ShapeData): void {
+  const l = unlocked(doc, id, 'edit the shape')
+  if (l.content.type !== 'shape') throw new EditError(`“${l.name}” is not a shape layer.`)
+  l.content.params = keepTopLeft(l.content.params, l.content.shape.w, l.content.shape.h, shape.w, shape.h)
+  l.content.shape = shape
+}
+
 /** Replaces a raster layer's tiles (the result of painting, filters, …). */
 export function setLayerTiles(doc: ImageDocument, id: string, tiles: TileMap, x?: number, y?: number): void {
   const l = layer(doc, id)
@@ -197,7 +227,7 @@ export function setLayerTiles(doc: ImageDocument, id: string, tiles: TileMap, x?
   if (y !== undefined) l.content.y = y
 }
 
-/** Turns a fill layer into pixels (tiles built by the renderer). */
+/** Turns a fill, type or shape layer into pixels (tiles built by the renderer). */
 export function rasterizeLayer(doc: ImageDocument, id: string, tiles: TileMap): void {
   const l = unlocked(doc, id, 'rasterize it')
   if (l.content.type === 'raster') throw new EditError(`“${l.name}” is already a pixel layer.`)
@@ -258,7 +288,7 @@ export function cropDocument(doc: ImageDocument, r: Rect): void {
     if (l.content.type === 'raster') {
       l.content.x -= x
       l.content.y -= y
-    }
+    } else if (isVector(l.content)) l.content.params = { ...l.content.params, cx: l.content.params.cx - x, cy: l.content.params.cy - y }
     shiftMask(l.mask, -x, -y)
   }
   doc.width = w
@@ -281,7 +311,7 @@ export function resizeCanvas(doc: ImageDocument, width: number, height: number, 
     if (l.content.type === 'raster') {
       l.content.x += dx
       l.content.y += dy
-    }
+    } else if (isVector(l.content)) l.content.params = { ...l.content.params, cx: l.content.params.cx + dx, cy: l.content.params.cy + dy }
     shiftMask(l.mask, dx, dy)
   }
   doc.selection = translate(doc.selection, dx, dy)
@@ -293,7 +323,7 @@ export function resizeCanvas(doc: ImageDocument, width: number, height: number, 
  * Applies a whole-document pixel transform (image size, rotate, flip): new
  * dimensions plus new tiles for every raster layer.
  */
-export function transformDocument(doc: ImageDocument, width: number, height: number, layers: Record<string, TileSurface>, masks: Record<string, TileSurface> = {}): void {
+export function transformDocument(doc: ImageDocument, width: number, height: number, layers: Record<string, TileSurface>, masks: Record<string, TileSurface> = {}, vectors: Record<string, TransformParams> = {}): void {
   try {
     checkDimensions(width, height)
   } catch (e) {
@@ -304,6 +334,8 @@ export function transformDocument(doc: ImageDocument, width: number, height: num
     if (t && l.content.type === 'raster') l.content = { type: 'raster', x: t.x, y: t.y, tiles: t.tiles }
     const m = masks[l.id]
     if (m && l.mask) l.mask = { ...l.mask, x: m.x, y: m.y, tiles: m.tiles }
+    const v = vectors[l.id]
+    if (v && isVector(l.content)) l.content.params = v
   }
   doc.width = width
   doc.height = height

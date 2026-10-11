@@ -2,11 +2,12 @@ import { describe, expect, it } from 'vitest'
 import * as A from '../src/core/affine'
 import { adjustmentFilter, adjustmentOp, blurFilter, defaultAdjustment, scaleFilter } from '../src/core/adjustments'
 import * as L from '../src/core/lut'
+import * as V from '../src/core/vector'
 import { hexToRgb, hsvToRgb, parseHex, rgbToHex, rgbToHsv } from '../src/core/color'
 import * as E from '../src/core/edit'
 import { colorMask, maskBounds } from '../src/core/flood'
 import { FormatError, packProject, unpackProject } from '../src/core/format'
-import { apply, createHistory, jumpTo, redo, replace, undo } from '../src/core/history'
+import { apply, createHistory, dropLast, jumpTo, redo, replace, undo } from '../src/core/history'
 import { collectTileIds, createDocument, rasterBounds, TILE, type ImageDocument } from '../src/core/model'
 import { combine, dragRect, invert, selectAll, translate } from '../src/core/selection'
 import { clampZoom, docToScreen, fitView, formatZoom, nextZoomStep, screenToDoc, zoomAt } from '../src/core/view'
@@ -370,5 +371,50 @@ describe('levels and curves tables', () => {
     expect(h.r[255]).toBe(1)
     expect(h.r[0]).toBe(0)
     expect(h.rgb[76]).toBe(1)
+  })
+})
+
+describe('vector layers', () => {
+  it('keepTopLeft holds the corner when the box grows (also when rotated)', () => {
+    for (const rot of [0, 0.7]) {
+      const p0 = { cx: 50, cy: 20, sx: 1, sy: 1, rot }
+      const before = A.apply(A.paramsToMatrix(p0, 100, 40), 0, 0)
+      const p1 = V.keepTopLeft(p0, 100, 40, 160, 60)
+      const after = A.apply(A.paramsToMatrix(p1, 160, 60), 0, 0)
+      expect(after.x).toBeCloseTo(before.x)
+      expect(after.y).toBeCloseTo(before.y)
+    }
+  })
+
+  it('mapParams moves the centre and adjusts scale/rotation', () => {
+    const p = { cx: 10, cy: 20, sx: 1, sy: 1, rot: 0.1 }
+    expect(V.mapParams(p, (x, y) => ({ x: 100 - x, y }), { flipX: true })).toEqual({ cx: 90, cy: 20, sx: -1, sy: 1, rot: -0.1 })
+    const r = V.mapParams(p, (x, y) => ({ x: 50 - y, y: x }), { rotate: Math.PI / 2 })
+    expect([r.cx, r.cy, r.rot]).toEqual([30, 10, 0.1 + Math.PI / 2])
+  })
+
+  it('type and shape layers move, crop and refuse painting', () => {
+    const d = doc()
+    const text = { ...V.DEFAULT_TEXT_STYLE, text: 'Hi' }
+    E.addLayer(d, { type: 'text', text, params: { cx: 50, cy: 50, sx: 1, sy: 1, rot: 0 } }, 'Hi')
+    const id = d.activeLayerId!
+    expect(() => E.rasterTarget(d, 'paint on it')).toThrow(/type layer/)
+    E.setVectorParams(d, id, { cx: 60, cy: 55, sx: 1, sy: 1, rot: 0 })
+    E.cropDocument(d, { x: 10, y: 5, w: 100, h: 100 })
+    const c = d.layers[1].content
+    expect(c.type === 'text' && [c.params.cx, c.params.cy]).toEqual([50, 50])
+    E.setText(d, id, { ...text, text: 'Hello' }, { w: 40, h: 50 }, { w: 100, h: 50 })
+    const c2 = d.layers[1].content
+    expect(c2.type === 'text' && c2.params.cx).toBe(80)
+    E.rasterizeLayer(d, id, {})
+    expect(d.layers[1].content.type).toBe('raster')
+  })
+
+  it('dropLast removes a step without leaving a redo', () => {
+    let h = createHistory(doc())
+    h = apply(h, 'Type Layer', (x) => void E.addLayer(x), 'k')
+    h = dropLast(h)
+    expect(h.present.layers).toHaveLength(1)
+    expect(h.future).toHaveLength(0)
   })
 })

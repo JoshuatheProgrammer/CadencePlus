@@ -5,14 +5,15 @@
  */
 import { isIdentityParams, paramsForRect, paramsToMatrix, snapToPixelGrid, type Affine, type TransformParams } from '@core/affine'
 import * as E from '@core/edit'
-import { beginFloat, commitFloat } from '../engine/transform'
+import { beginFloat, commitFloat, floatSize } from '../engine/transform'
 import { editDoc } from './doc-actions'
 import { activeDocState, get, set, toast, useEditor, type EditorState } from './store'
 
 type Active = NonNullable<EditorState['transform']>
 
 export function transformMatrix(t: Active): Affine {
-  return paramsToMatrix(t.params, t.fs.pixels.canvas.width, t.fs.pixels.canvas.height)
+  const s = floatSize(t.fs)
+  return paramsToMatrix(t.params, s.w, s.h)
 }
 
 export const transforming = (): boolean => !!get().transform
@@ -28,13 +29,12 @@ export function startTransform(mode: 'transform' | 'move' = 'transform'): boolea
   const what = mode === 'move' ? 'move its pixels' : 'transform it'
   if (l.locked) return toast(`“${l.name}” is locked. Unlock it to ${what}.`, 'warn'), false
   if (!l.visible) return toast(`“${l.name}” is hidden. Show it to ${what}.`, 'warn'), false
-  if (l.content.type !== 'raster') {
-    return toast(l.content.type === 'fill' ? `“${l.name}” is a fill layer and covers the whole canvas; rasterize it to transform it.` : 'Adjustment layers have no pixels to transform.', 'warn'), false
-  }
+  if (l.content.type === 'fill') return toast(`“${l.name}” is a fill layer and covers the whole canvas; rasterize it to transform it.`, 'warn'), false
+  if (l.content.type === 'adjustment') return toast('Adjustment layers have no pixels to transform.', 'warn'), false
   if (doc.target === 'mask' && doc.selection) return toast('Transforming part of a mask is not supported yet. Click the layer thumbnail to transform pixels.', 'warn'), false
   const fs = beginFloat(doc, l, ds.id)
   if (!fs) return toast(doc.selection ? 'The selected area of this layer is empty.' : `“${l.name}” is empty — there is nothing to transform.`, 'warn'), false
-  set({ transform: { fs, params: paramsForRect(fs.pixels.rect), mode }, crop: null })
+  set({ transform: { fs, params: fs.kind === 'vector' ? fs.start : paramsForRect(fs.pixels.rect), mode }, crop: null })
   return true
 }
 
@@ -51,11 +51,17 @@ export function commitTransform(): void {
   const t = get().transform
   if (!t) return
   set({ transform: null })
-  if (isIdentityParams(t.params, t.fs.pixels.rect)) return
-  const ds = get().docs.find((d) => d.id === t.fs.docId)
-  const l = ds?.history.present.layers.find((x) => x.id === t.fs.layerId)
+  const fs = t.fs
+  const ds = get().docs.find((d) => d.id === fs.docId)
+  const l = ds?.history.present.layers.find((x) => x.id === fs.layerId)
   if (!ds || !l) return
-  const r = commitFloat(l, t.fs, transformMatrix(t), ds.history.present.selection)
+  if (fs.kind === 'vector') {
+    const same = (['cx', 'cy', 'sx', 'sy', 'rot'] as const).every((k) => t.params[k] === fs.start[k])
+    if (!same) editDoc(ds.id, t.mode === 'move' ? 'Move' : 'Free Transform', (d) => E.setVectorParams(d, l.id, t.params))
+    return
+  }
+  if (isIdentityParams(t.params, fs.pixels.rect)) return
+  const r = commitFloat(l, fs, transformMatrix(t), ds.history.present.selection)
   editDoc(ds.id, t.mode === 'move' ? 'Move' : 'Free Transform', (d) => {
     E.setLayerTiles(d, l.id, r.tiles)
     if (r.maskTiles) E.setSurfaceTiles(d, l.id, 'mask', r.maskTiles)
@@ -69,7 +75,8 @@ const QUICK_LABEL: Record<QuickTransform, string> = { flipH: 'Flip Horizontal', 
 export const quickLabel = (q: QuickTransform) => QUICK_LABEL[q]
 
 function applyQuick(t: Active, q: QuickTransform): TransformParams {
-  return snapToPixelGrid(rawQuick(t.params, q), t.fs.pixels.canvas.width, t.fs.pixels.canvas.height)
+  const s = floatSize(t.fs)
+  return snapToPixelGrid(rawQuick(t.params, q), s.w, s.h)
 }
 
 function rawQuick(p: TransformParams, q: QuickTransform): TransformParams {

@@ -9,6 +9,8 @@ import { dragRect, type SelMode } from '@core/selection'
 import { clampZoom, panBy, zoomAt, type View } from '@core/view'
 import { Stroke } from '../../engine/brush'
 import { layerAlphaAt } from '../../engine/pixels'
+import { floatSize } from '../../engine/transform'
+import { commitText, createShape, editText, moveVector, startNewText, textLayerAt } from '../../state/vector-actions'
 import { setView } from '../../state/doc-actions'
 import * as A from '../../state/image-actions'
 import { get, set, toast, type ToolId } from '../../state/store'
@@ -91,6 +93,19 @@ const move: Handler = (c, p) => {
   const l = activeLayer(doc)
   if (!l) return null
   if (l.locked) return toast(`“${l.name}” is locked. Unlock it to move it.`, 'warn'), null
+  if (l.content.type === 'text' || l.content.type === 'shape') {
+    const start = l.content.params
+    const vkey = `move:${l.id}:${Date.now()}`
+    return {
+      move(q, e) {
+        let dx = Math.round(q.x - p.x)
+        let dy = Math.round(q.y - p.y)
+        if (e.shiftKey) Math.abs(dx) > Math.abs(dy) ? (dy = 0) : (dx = 0)
+        moveVector(l.id, start, dx, dy, vkey)
+      },
+      up() {}
+    }
+  }
   if (l.content.type !== 'raster') return toast(`“${l.name}” covers the whole canvas and cannot be moved.`, 'warn'), null
   const x0 = l.content.x
   const y0 = l.content.y
@@ -341,7 +356,52 @@ const crop: Handler = (c, p) => {
   }
 }
 
+const type: Handler = (_c, p) => {
+  if (get().textEdit) commitText()
+  const hit = textLayerAt(p.x, p.y)
+  if (hit) editText(hit)
+  else startNewText(p.x, p.y)
+  return NOOP
+}
+
+const shape: Handler = (_c, p, e) => {
+  const kind = get().options.shape.kind
+  const altStart = e.altKey
+  let rect: Rect | null = null
+  let end = { x: p.x, y: p.y }
+  return {
+    move(q, ev) {
+      end = { x: q.x, y: q.y }
+      if (kind === 'line') {
+        if (ev.shiftKey) {
+          const a = Math.round(Math.atan2(q.y - p.y, q.x - p.x) / (Math.PI / 4)) * (Math.PI / 4)
+          const len = Math.hypot(q.x - p.x, q.y - p.y)
+          end = { x: p.x + Math.cos(a) * len, y: p.y + Math.sin(a) * len }
+        }
+        overlay.gradient = [p.x, p.y, end.x, end.y]
+      } else {
+        rect = roundRect(dragRect(p.x, p.y, q.x, q.y, ev.shiftKey, ev.altKey || altStart))
+        overlay.marquee = { shape: kind === 'ellipse' ? 'ellipse' : 'rect', rect }
+      }
+      requestOverlay()
+    },
+    up() {
+      overlay.marquee = null
+      overlay.gradient = null
+      requestOverlay()
+      createShape(rect ?? { x: p.x, y: p.y, w: 0, h: 0 }, p, end)
+    },
+    cancel() {
+      overlay.marquee = null
+      overlay.gradient = null
+      requestOverlay()
+    }
+  }
+}
+
 export const HANDLERS: Partial<Record<ToolId, Handler>> = {
+  text: type,
+  shape,
   move,
   marquee,
   lasso,
@@ -372,8 +432,7 @@ export function transformGeometry(c: { view: View; w: number; h: number }) {
   const t = get().transform
   if (!t) return null
   const m = transformMatrix(t)
-  const fw = t.fs.pixels.canvas.width
-  const fh = t.fs.pixels.canvas.height
+  const { w: fw, h: fh } = floatSize(t.fs)
   const toScreen = (lx: number, ly: number) => {
     const d = apply(m, lx, ly)
     return { x: (d.x - c.view.cx) * c.view.zoom + c.w / 2, y: (d.y - c.view.cy) * c.view.zoom + c.h / 2 }
@@ -407,8 +466,7 @@ export function transformHitAt(c: { view: View; w: number; h: number }, sx: numb
 export function transformSession(c: ToolContext, p: Pt, hit: TransformHit): Session {
   const t = get().transform!
   const start = t.params
-  const fw = t.fs.pixels.canvas.width
-  const fh = t.fs.pixels.canvas.height
+  const { w: fw, h: fh } = floatSize(t.fs)
   const exactMove = t.mode === 'move'
   void c
   if (hit.kind === 'move') {

@@ -153,5 +153,34 @@ await win.waitForTimeout(300)
 await win.screenshot({ path: join(out, '9-transform.png') })
 await win.keyboard.press('Escape')
 
+// Type and shapes
+await win.evaluate(() => window.__cadencePlus.D.newDocument({ name: 'Poster', width: 1200, height: 700, resolution: 72, background: 'white' }))
+await win.waitForTimeout(400)
+{
+  const vp = await win.locator('.viewport').boundingBox()
+  const at = async (x, y) => win.evaluate(([x, y]) => {
+    const s = window.__cadencePlus.get()
+    const v = s.docs.find((d) => d.id === s.activeId).view
+    return { x: (x - v.cx) * v.zoom + s.viewport.w / 2, y: (y - v.cy) * v.zoom + s.viewport.h / 2 }
+  }, [x, y])
+  await win.evaluate(() => window.__cadencePlus.set({ fg: '#69b7ff', bg: '#101114' }))
+  await win.evaluate(() => window.__cadencePlus.set((s) => ({ options: { ...s.options, shape: { ...s.options.shape, kind: 'rect', radius: 40, fill: true, stroke: true, strokeWidth: 10 } } })))
+  await win.keyboard.press('u')
+  let p0 = await at(80, 80), p1 = await at(560, 620)
+  await win.mouse.move(vp.x + p0.x, vp.y + p0.y); await win.mouse.down(); await win.mouse.move(vp.x + p1.x, vp.y + p1.y, { steps: 5 }); await win.mouse.up()
+  await win.evaluate(() => window.__cadencePlus.set((s) => ({ fg: '#f2d06b', options: { ...s.options, shape: { ...s.options.shape, kind: 'polygon', sides: 6, stroke: false } } })))
+  p0 = await at(700, 120); p1 = await at(1000, 420)
+  await win.mouse.move(vp.x + p0.x, vp.y + p0.y); await win.mouse.down(); await win.mouse.move(vp.x + p1.x, vp.y + p1.y, { steps: 5 }); await win.mouse.up()
+  await win.evaluate(() => window.__cadencePlus.set((s) => ({ fg: '#101114', options: { ...s.options, text: { ...s.options.text, size: 110, weight: 700, font: 'Segoe UI' } } })))
+  await win.keyboard.press('t')
+  p0 = await at(620, 590)
+  await win.mouse.click(vp.x + p0.x, vp.y + p0.y)
+  await win.waitForSelector('.text-edit')
+  await win.keyboard.type('Cadence+', { delay: 10 })
+  await win.waitForTimeout(300)
+  await win.screenshot({ path: join(out, '12-type.png') })
+  await win.keyboard.press('Control+Enter')
+}
+
 console.log(JSON.stringify({ errors, stats: await win.evaluate(() => window.__cadencePlus.storeStats()) }, null, 2))
 await app.close()

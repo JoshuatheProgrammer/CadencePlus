@@ -7,7 +7,7 @@ import * as A from '../../state/image-actions'
 import { activeDoc, set, useEditor } from '../../state/store'
 import { keysFor } from '../../state/commands'
 import { ScrubNumber, showContextMenu } from '../components'
-import { IconEye, IconEyeOff, IconFx, IconLock, IconMask, IconNewLayer, IconTrash, IconUnlock, IconFillLayer } from '../icons'
+import { IconText, IconEye, IconEyeOff, IconFx, IconLock, IconMask, IconNewLayer, IconTrash, IconUnlock, IconFillLayer } from '../icons'
 import { checkerTile } from '../tokens'
 
 const THUMB = 34
@@ -38,6 +38,13 @@ export const LayerThumb = memo(function LayerThumb({ doc, layer }: { doc: ImageD
     return (
       <div className="layer-thumb adj" title={ADJUSTMENTS[layer.content.adjustment.kind].label}>
         <IconFx size={16} />
+      </div>
+    )
+  }
+  if (layer.content.type === 'text') {
+    return (
+      <div className="layer-thumb adj type" title="Type layer — double-click the text on the canvas with the Type tool to edit">
+        <IconText size={18} />
       </div>
     )
   }
@@ -73,7 +80,7 @@ function LayerRow({ doc, layer, active, onDragStart, renaming, setRenaming }: { 
   const onMask = active && doc.target === 'mask' && !!layer.mask
   const [name, setName] = useState(layer.name)
   useEffect(() => setName(layer.name), [layer.name])
-  const kind = layer.content.type === 'fill' ? 'Fill layer' : layer.content.type === 'adjustment' ? 'Adjustment layer' : 'Pixel layer'
+  const kind = { fill: 'Fill layer', adjustment: 'Adjustment layer', raster: 'Pixel layer', text: 'Type layer', shape: 'Shape layer' }[layer.content.type]
   return (
     <div
       className={`layer-row${active ? ' active' : ''}${layer.visible ? '' : ' hidden'}`}
@@ -97,7 +104,7 @@ function LayerRow({ doc, layer, active, onDragStart, renaming, setRenaming }: { 
           { label: 'Delete Layer', action: () => A.deleteLayer(layer.id), disabled: layer.locked || doc.layers.length < 2 },
           { sep: true },
           { label: 'Select Pixels', action: () => A.selectLayerPixels(layer.id), disabled: layer.content.type === 'adjustment' },
-          { label: 'Rasterize Layer', action: A.rasterizeActive, disabled: layer.content.type !== 'fill' },
+          { label: 'Rasterize Layer', action: A.rasterizeActive, disabled: layer.content.type === 'raster' || layer.content.type === 'adjustment' },
           { sep: true },
           ...(layer.mask
             ? [

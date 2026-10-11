@@ -5,6 +5,7 @@ import * as D from './state/doc-actions'
 import * as A from './state/image-actions'
 import * as R from './state/recovery'
 import * as TF from './state/transform-actions'
+import * as VA from './state/vector-actions'
 import { COMMANDS, run } from './state/commands'
 import { get, set } from './state/store'
 import { storeStats } from './engine/tiles'
@@ -21,6 +22,7 @@ export function installTestHooks(): void {
     A,
     R,
     TF,
+    VA,
     COMMANDS,
     storeStats,
     /** Average ms per viewport-sized composite of the active document (GPU flushed). */
@@ -42,6 +44,15 @@ export function installTestHooks(): void {
         target.getContext('2d')!.getImageData(0, 0, 1, 1)
       }
       return (performance.now() - t0) / n
+    },
+    /** Pixels in a rect of the composite darker than `t` (luminance). */
+    darkCount(x: number, y: number, w: number, h: number, t = 128): number {
+      const doc = get().docs.find((d) => d.id === get().activeId)?.history.present
+      if (!doc) return -1
+      const d = renderComposite(doc, 'test').getContext('2d')!.getImageData(x, y, w, h).data
+      let n = 0
+      for (let i = 0; i < d.length; i += 4) if (d[i + 3] > 128 && 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2] < t) n++
+      return n
     },
     /** RGBA of the flattened active document at (x, y). */
     pixel(x: number, y: number): number[] {

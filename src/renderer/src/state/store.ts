@@ -10,6 +10,7 @@ import type { SelMode } from '@core/selection'
 import type { View } from '@core/view'
 import { DEFAULT_BRUSH, type BrushOptions } from '../engine/brush'
 import type { TransformParams } from '@core/affine'
+import { DEFAULT_TEXT_STYLE, type ShapeKind, type TextStyle } from '@core/vector'
 import type { FilterPreview, StrokePreview } from '../engine/render'
 import type { FloatState } from '../engine/transform'
 
@@ -26,6 +27,10 @@ export interface ToolOptions {
   eyedropper: { size: number; sampleAll: boolean }
   zoom: { out: boolean }
   move: { autoSelect: boolean }
+  /** New type uses this style; editing a type layer shows its own. */
+  text: TextStyle
+  /** Shapes fill with the foreground colour and stroke with the background colour. */
+  shape: { kind: ShapeKind; fill: boolean; stroke: boolean; strokeWidth: number; radius: number; sides: number }
 }
 
 export const DEFAULT_OPTIONS: ToolOptions = {
@@ -38,7 +43,9 @@ export const DEFAULT_OPTIONS: ToolOptions = {
   gradient: { kind: 'linear', opacity: 100, reverse: false, toTransparent: false },
   eyedropper: { size: 1, sampleAll: true },
   zoom: { out: false },
-  move: { autoSelect: false }
+  move: { autoSelect: false },
+  text: { ...DEFAULT_TEXT_STYLE },
+  shape: { kind: 'rect', fill: true, stroke: false, strokeWidth: 4, radius: 0, sides: 6 }
 }
 
 export interface DocState {
@@ -101,6 +108,8 @@ export interface EditorState {
   busy: string | null
   /** Layer whose mask is shown in place of the image (Alt+click a mask thumbnail). */
   maskView: string | null
+  /** Type being edited on the canvas. `key` coalesces the edits into one undo step. */
+  textEdit: { docId: string; layerId: string; key: string; isNew: boolean } | null
   /** Free Transform / selection move in progress. */
   transform: { fs: FloatState; params: TransformParams; mode: 'transform' | 'move' } | null
 }
@@ -133,7 +142,8 @@ export const useEditor = create<EditorState>(() => ({
   crop: null,
   busy: null,
   maskView: null,
-  transform: null
+  transform: null,
+  textEdit: null
 }))
 
 export const get = useEditor.getState

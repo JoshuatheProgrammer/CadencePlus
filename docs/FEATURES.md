@@ -7,7 +7,7 @@ Status legend:
 - 📋 **Planned**: not in the interface yet, or shown disabled with an explanation.
 
 Last verified: 2026-10-10 on Windows 11, Electron 44.7.
-Suites: 40 unit (`npm test`) · 46 end-to-end (`npm run e2e`), all passing.
+Suites: 44 unit (`npm test`) · 53 end-to-end (`npm run e2e`), all passing.
 
 ## Phase 1: core image-editing workflow
 
@@ -21,7 +21,7 @@ Suites: 40 unit (`npm test`) · 46 end-to-end (`npm run e2e`), all passing.
 | Home screen with presets and recent files | ✅ | |
 | Keyboard shortcuts (Photoshop-style) | ✅ | Help → Keyboard Shortcuts lists them. Not yet user-rebindable. |
 | Styled tooltips, toasts, focus states | ✅ | |
-| Unavailable tools shown disabled with a reason | ✅ | Type and Shape tools. |
+| Unavailable tools shown disabled with a reason | ✅ | (Every tool in the rail now works.) |
 
 ### Documents and files
 | Feature | Status | Notes |
@@ -87,7 +87,10 @@ Suites: 40 unit (`npm test`) · 46 end-to-end (`npm run e2e`), all passing.
 | Crop tool (drag, adjust handles, Enter / Esc / double-click) | ✅ | Pixels outside the canvas stay on their layers. |
 | Fill / Clear selection (Alt+Backspace, Ctrl+Backspace, Delete) | ✅ | |
 | Cut / Copy / Copy Merged / Paste (in place) | ✅ | Uses the system clipboard as PNG. Pasting images copied from other apps depends on them putting PNG on the clipboard; not tested with other apps. |
-| Type, shapes, clone stamp, healing, dodge/burn, smudge | 📋 | |
+| Type tool (live type layers) | ✅ | Click to add point type, click type to edit it; edited on the canvas over the real rendering. Font (installed fonts from a curated list), weight, italic, size, alignment, colour, leading, tracking; multi-line. One undo step per editing session; Esc cancels; empty new type leaves no trace. Stays vector through Free Transform, save/reopen, Image Size and canvas rotation; Rasterize Layer converts it. |
+| Shape tool (rectangle, rounded rectangle, ellipse, polygon, line) | ✅ | Vector shape layers: fill (foreground), stroke (background) and width, corner radius, sides, size; edited in Properties; transform without resampling. |
+| Type on a path, paragraph (box) type, character/paragraph panels, pen paths | 📋 | |
+| Clone stamp, healing, dodge/burn, smudge | 📋 | |
 
 ### Image commands
 | Feature | Status | Notes |

@@ -10,6 +10,7 @@ import { checkerTile, token } from '../tokens'
 import { drawOverlay, hasAnts, onOverlayRequest, overlay, requestOverlay } from './overlay'
 import { HANDLERS, panSession, setEventMapper, transformHitAt, transformSession, type Pt, type Session, type ToolContext } from './tool-handlers'
 import { transformMatrix } from '../../state/transform-actions'
+import { TextEditor } from './TextEditor'
 
 /** The viewport's live geometry, shared with rulers. */
 export const viewportGeom = { w: 0, h: 0, dpr: 1 }
@@ -89,7 +90,7 @@ export function Viewport() {
       ctx.fillStyle = ctx.createPattern(checkerTile(8 * size.dpr), 'repeat')!
       ctx.fillRect(r.x, r.y, r.w, r.h)
       const comp = poolCanvas('view.composite', W, H)
-      renderDocument(comp, doc, { xf, width: W, height: H, stroke, filterPreview, maskView, float: transform ? { fs: transform.fs, m: transformMatrix(transform) } : null })
+      renderDocument(comp, doc, { xf, width: W, height: H, stroke, filterPreview, maskView, float: transform ? { fs: transform.fs, m: transformMatrix(transform), params: transform.params } : null })
       ctx.drawImage(comp, 0, 0)
       // Pixel grid at high zoom
       if (showGrid && view.zoom >= 8) {
@@ -312,6 +313,7 @@ export function Viewport() {
     >
       <canvas ref={docCanvas} style={{ width: size.w, height: size.h }} />
       <canvas ref={ovCanvas} style={{ width: size.w, height: size.h, pointerEvents: 'none' }} />
+      <TextEditor w={size.w} h={size.h} />
     </div>
   )
 }

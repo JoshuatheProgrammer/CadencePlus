@@ -8,6 +8,7 @@ import { histogram } from '@core/lut'
 import type { ImageDocument } from '@core/model'
 import { renderComposite } from '../../engine/render'
 import { AdjustmentEditor, type Histograms } from '../AdjustmentEditor'
+import { ShapeProps, TextContentField, TextStyleControls } from '../VectorControls'
 import { ScrubNumber } from '../components'
 import { ColorField } from './ColorPanel'
 
@@ -57,7 +58,7 @@ export function PropertiesPanel() {
         {l && (
           <div className="prop-section">
             <div className="prop-head">
-              {l.content.type === 'raster' ? 'Pixel Layer' : l.content.type === 'fill' ? 'Fill Layer' : ADJUSTMENTS[l.content.adjustment.kind].label}
+              {l.content.type === 'adjustment' ? ADJUSTMENTS[l.content.adjustment.kind].label : { raster: 'Pixel Layer', fill: 'Fill Layer', text: 'Type Layer', shape: 'Shape Layer' }[l.content.type]}
             </div>
             <div className="prop-row">
               <label>Name</label>
@@ -104,6 +105,31 @@ export function PropertiesPanel() {
                 </div>
               </>
             )}
+            {(l.content.type === 'text' || l.content.type === 'shape') && (
+              <div className="prop-row">
+                <label>Transform</label>
+                <div className="ctrl">
+                  <span className="value dim">
+                    {Math.round(l.content.params.cx)}, {Math.round(l.content.params.cy)} · {Math.round(Math.abs(l.content.params.sx) * 100)}% × {Math.round(Math.abs(l.content.params.sy) * 100)}% ·{' '}
+                    {Math.round((l.content.params.rot * 1800) / Math.PI) / 10}°
+                  </span>
+                </div>
+              </div>
+            )}
+            {l.content.type === 'text' && (
+              <>
+                <div className="prop-row" style={{ alignItems: 'start' }}>
+                  <label>Text</label>
+                  <div className="ctrl">
+                    <TextContentField id={l.id} text={l.content.text.text} />
+                  </div>
+                </div>
+                <div className="prop-editor text-style">
+                  <TextStyleControls style={l.content.text} />
+                </div>
+              </>
+            )}
+            {l.content.type === 'shape' && <ShapeProps id={l.id} shape={l.content.shape} locked={l.locked} />}
             {l.content.type === 'fill' && (
               <div className="prop-row">
                 <label>Color</label>

@@ -4,9 +4,12 @@
  */
 import { adjustmentOp, type PixelOp } from '@core/adjustments'
 import { colorMask, maskBounds } from '@core/flood'
-import { intersectRect, rasterBounds, tileKey, TILE, unionRect, type ImageDocument, type Layer, type Rect, type TileMap, type TileSurface } from '@core/model'
+import type { TransformParams } from '@core/affine'
+import { intersectRect, isVector, rasterBounds, tileKey, TILE, unionRect, type ImageDocument, type Layer, type Rect, type TileMap, type TileSurface } from '@core/model'
+import { mapParams } from '@core/vector'
 import type { Selection } from '@core/selection'
 import { drawWithOp } from './ops'
+import { drawVector, vectorBounds } from './vector'
 import { compositeOp, renderComposite } from './render'
 import { maskFromArray, selectionMask } from './selection'
 import { drawTiles, getTile, makeTile, poolCanvas, rasterToCanvas, tilesFromCanvas, type Ctx2D } from './tiles'
@@ -151,8 +154,19 @@ export function layerCanvas(doc: ImageDocument, l: Layer, key = 'layer'): Offscr
   else if (l.content.type === 'fill') {
     g.fillStyle = l.content.color
     g.fillRect(0, 0, doc.width, doc.height)
-  }
+  } else if (isVector(l.content)) drawVector(g, l.content, { a: 1, b: 0, c: 0, d: 1, e: 0, f: 0 })
   return c
+}
+
+/** A type/shape/fill layer as pixel tiles (Rasterize Layer); vector content keeps what lies outside the canvas. */
+export function rasterizeTiles(doc: ImageDocument, l: Layer): TileMap {
+  if (isVector(l.content)) {
+    const b = vectorBounds(l.content)
+    const c = poolCanvas('rasterize', b.w, b.h)
+    drawVector(c.getContext('2d')!, l.content, { a: 1, b: 0, c: 0, d: 1, e: -b.x, f: -b.y })
+    return tilesFromCanvas(c, b.x, b.y, 0, 0)
+  }
+  return tilesFromCanvas(layerCanvas(doc, l), 0, 0, 0, 0)
 }
 
 /** Pixels to sample for wand/bucket/eyedropper: the composite, or just the active layer. */
@@ -169,6 +183,11 @@ const og = one.getContext('2d', { willReadFrequently: true })!
 export function layerAlphaAt(doc: ImageDocument, l: Layer, x: number, y: number): number {
   if (x < 0 || y < 0 || x >= doc.width || y >= doc.height) return 0
   if (l.content.type === 'fill') return 255
+  if (isVector(l.content)) {
+    og.clearRect(0, 0, 1, 1)
+    drawVector(og, l.content, { a: 1, b: 0, c: 0, d: 1, e: -Math.floor(x), f: -Math.floor(y) })
+    return og.getImageData(0, 0, 1, 1).data[3]
+  }
   if (l.content.type !== 'raster') return 0
   const c = l.content
   const px = Math.floor(x)
@@ -248,6 +267,7 @@ export function mergeToTiles(doc: ImageDocument, layers: Layer[], background?: s
   let b: Rect | null = background ? docRect : null
   for (const l of layers) {
     if (l.content.type === 'raster') b = unionRect(b, rasterBounds(l.content))
+    else if (isVector(l.content)) b = unionRect(b, vectorBounds(l.content))
     else b = unionRect(b, docRect)
   }
   if (!b) return {}
@@ -290,7 +310,7 @@ export function mergeToTiles(doc: ImageDocument, layers: Layer[], background?: s
       else if (l.content.type === 'fill') {
         lg.fillStyle = l.content.color
         lg.fillRect(-b.x, -b.y, doc.width, doc.height)
-      }
+      } else if (isVector(l.content)) drawVector(lg, l.content, { a: 1, b: 0, c: 0, d: 1, e: -b.x, f: -b.y })
       if (lc) {
         lg.globalCompositeOperation = 'destination-out'
         drawTiles(lg, l.mask!, -b.x, -b.y)
@@ -397,18 +417,35 @@ export function copyPixels(doc: ImageDocument, merged: boolean): { canvas: Offsc
 
 export type DocTransform = { kind: 'resize'; width: number; height: number } | { kind: 'rotate'; turns: 1 | 2 | 3 } | { kind: 'flip'; axis: 'h' | 'v' }
 
-export function transformLayers(doc: ImageDocument, t: DocTransform): { width: number; height: number; layers: Record<string, TileSurface>; masks: Record<string, TileSurface> } {
+export function transformLayers(doc: ImageDocument, t: DocTransform): { width: number; height: number; layers: Record<string, TileSurface>; masks: Record<string, TileSurface>; vectors: Record<string, TransformParams> } {
   const W = doc.width
   const H = doc.height
   const size =
     t.kind === 'resize' ? { width: t.width, height: t.height } : t.kind === 'rotate' && t.turns !== 2 ? { width: H, height: W } : { width: W, height: H }
   const layers: Record<string, TileSurface> = {}
   const masks: Record<string, TileSurface> = {}
+  const vectors: Record<string, TransformParams> = {}
   for (const l of doc.layers) {
     if (l.content.type === 'raster') layers[l.id] = transformSurface(l.content, t, W, H)
+    if (isVector(l.content)) vectors[l.id] = transformVector(l.content.params, t, W, H)
     if (l.mask) masks[l.id] = transformSurface(l.mask, t, W, H)
   }
-  return { ...size, layers, masks }
+  return { ...size, layers, masks, vectors }
+}
+
+/** Type and shapes stay vectors through Image Size, rotation and flips. */
+function transformVector(p: TransformParams, t: DocTransform, W: number, H: number): TransformParams {
+  if (t.kind === 'resize') {
+    const kx = t.width / W
+    const ky = t.height / H
+    return mapParams(p, (x, y) => ({ x: x * kx, y: y * ky }), { scaleX: kx, scaleY: ky })
+  }
+  if (t.kind === 'rotate') {
+    if (t.turns === 1) return mapParams(p, (x, y) => ({ x: H - y, y: x }), { rotate: Math.PI / 2 })
+    if (t.turns === 2) return mapParams(p, (x, y) => ({ x: W - x, y: H - y }), { rotate: Math.PI })
+    return mapParams(p, (x, y) => ({ x: y, y: W - x }), { rotate: -Math.PI / 2 })
+  }
+  return t.axis === 'h' ? mapParams(p, (x, y) => ({ x: W - x, y }), { flipX: true }) : mapParams(p, (x, y) => ({ x, y: H - y }), { flipY: true })
 }
 
 function transformSurface(surface: TileSurface, t: DocTransform, W: number, H: number): TileSurface {
