@@ -38,13 +38,15 @@ export function rasterTarget(doc: ImageDocument, what: string): Layer & { conten
   return l as Layer & { content: Extract<LayerContent, { type: 'raster' }> }
 }
 
-export type PaintTarget = { layer: Layer; kind: 'pixels' | 'mask'; surface: TileSurface }
+/** `quick`: the target is the Quick Mask (kind 'mask'; `layer` is just the active layer). */
+export type PaintTarget = { layer: Layer; kind: 'pixels' | 'mask'; surface: TileSurface; quick?: boolean }
 
 /**
  * Where painting goes: the active layer's mask when it is targeted, else its
  * pixels (which must be a raster layer). Explains refusals with EditError.
  */
 export function paintSurface(doc: ImageDocument, what: string): PaintTarget {
+  if (doc.quickMask) return { layer: doc.layers.find((x) => x.id === doc.activeLayerId) ?? doc.layers[0], kind: 'mask', surface: doc.quickMask, quick: true }
   const l = layer(doc, doc.activeLayerId)
   if (doc.target === 'mask' && l.mask) {
     unlocked(doc, l.id, what)
@@ -57,6 +59,10 @@ export function paintSurface(doc: ImageDocument, what: string): PaintTarget {
 
 /** Stores new tiles for a paint target. */
 export function setSurfaceTiles(doc: ImageDocument, id: string, kind: 'pixels' | 'mask', tiles: TileMap): void {
+  if (kind === 'mask' && doc.quickMask) {
+    doc.quickMask.tiles = tiles
+    return
+  }
   const l = layer(doc, id)
   if (kind === 'mask') {
     if (!l.mask) throw new EditError(`“${l.name}” has no mask.`)

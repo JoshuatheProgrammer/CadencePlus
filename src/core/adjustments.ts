@@ -82,8 +82,16 @@ export function adjustmentLut(a: Adjustment): Uint8Array | null {
   return null
 }
 
-/** A pixel operation: a Canvas filter string, or a 256 × RGBA lookup table. */
-export type PixelOp = string | Uint8Array
+export type ShaderFilter = 'unsharp' | 'highPass' | 'noise' | 'motionBlur' | 'dodge' | 'burn' | 'sponge'
+
+/** A GPU filter (see core/filters.ts). */
+export interface ShaderOp {
+  shader: ShaderFilter
+  params: Record<string, number>
+}
+
+/** A pixel operation: a Canvas filter string, a 256 × RGBA lookup table, or a GPU filter. */
+export type PixelOp = string | Uint8Array | ShaderOp
 
 /** What an adjustment does to pixels, or null when it currently has no effect. */
 export function adjustmentOp(a: Adjustment): PixelOp | null {

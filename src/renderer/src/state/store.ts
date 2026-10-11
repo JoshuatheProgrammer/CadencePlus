@@ -2,6 +2,7 @@
  * Global editor state (Zustand). Documents hold their own undo history and
  * view; pixel tiles live in the engine's tile store.
  */
+import type { FilterKind, ToneRange } from '@core/filters'
 import { create } from 'zustand'
 import type { AdjustmentKind } from '@core/adjustments'
 import type { History } from '@cadence/core/history'
@@ -15,7 +16,14 @@ import type { FilterPreview, StrokePreview } from '../engine/render'
 import type { FloatState } from '../engine/transform'
 import type { ProofKind } from '../engine/ops'
 
-export type ToolId = 'move' | 'marquee' | 'lasso' | 'wand' | 'crop' | 'eyedropper' | 'brush' | 'eraser' | 'clone' | 'heal' | 'bucket' | 'gradient' | 'text' | 'shape' | 'hand' | 'zoom'
+export type ToolId =
+  | 'move' | 'marquee' | 'lasso' | 'polyLasso' | 'wand' | 'crop' | 'eyedropper'
+  | 'brush' | 'eraser' | 'clone' | 'heal' | 'historyBrush' | 'bucket' | 'gradient'
+  | 'blur' | 'sharpen' | 'smudge' | 'dodge' | 'burn' | 'sponge'
+  | 'text' | 'shape' | 'hand' | 'zoom'
+
+/** Retouching brushes: `strength` is how far one stroke moves the pixels toward the effect. */
+export type RetouchOptions = BrushOptions & { strength: number }
 
 export interface ToolOptions {
   marquee: { shape: 'rect' | 'ellipse'; mode: SelMode }
@@ -26,6 +34,14 @@ export interface ToolOptions {
   /** Clone Stamp: `aligned` keeps the source offset between strokes. */
   clone: BrushOptions & { aligned: boolean; sampleAll: boolean }
   heal: BrushOptions & { aligned: boolean; sampleAll: boolean }
+  /** Paints from the history state chosen in the History panel. */
+  historyBrush: BrushOptions
+  blur: RetouchOptions
+  sharpen: RetouchOptions
+  smudge: RetouchOptions
+  dodge: RetouchOptions & { range: ToneRange }
+  burn: RetouchOptions & { range: ToneRange }
+  sponge: RetouchOptions & { desaturate: boolean }
   bucket: { tolerance: number; contiguous: boolean; sampleAll: boolean; opacity: number }
   gradient: { kind: 'linear' | 'radial'; opacity: number; reverse: boolean; toTransparent: boolean }
   eyedropper: { size: number; sampleAll: boolean }
@@ -45,6 +61,13 @@ export const DEFAULT_OPTIONS: ToolOptions = {
   eraser: { ...DEFAULT_BRUSH, hardness: 100, pressureSize: false },
   clone: { ...DEFAULT_BRUSH, hardness: 60, pressureSize: false, aligned: true, sampleAll: false },
   heal: { ...DEFAULT_BRUSH, size: 40, hardness: 50, pressureSize: false, aligned: true, sampleAll: false },
+  historyBrush: { ...DEFAULT_BRUSH, hardness: 50, pressureSize: false },
+  blur: { ...DEFAULT_BRUSH, size: 40, hardness: 0, pressureSize: false, strength: 50 },
+  sharpen: { ...DEFAULT_BRUSH, size: 40, hardness: 0, pressureSize: false, strength: 50 },
+  smudge: { ...DEFAULT_BRUSH, size: 30, hardness: 30, pressureSize: false, spacing: 8, strength: 60 },
+  dodge: { ...DEFAULT_BRUSH, size: 60, hardness: 0, pressureSize: false, strength: 50, range: 'midtones' },
+  burn: { ...DEFAULT_BRUSH, size: 60, hardness: 0, pressureSize: false, strength: 50, range: 'midtones' },
+  sponge: { ...DEFAULT_BRUSH, size: 60, hardness: 0, pressureSize: false, strength: 50, desaturate: true },
   bucket: { tolerance: 32, contiguous: true, sampleAll: false, opacity: 100 },
   gradient: { kind: 'linear', opacity: 100, reverse: false, toTransparent: false },
   eyedropper: { size: 1, sampleAll: true },
@@ -76,6 +99,8 @@ export type Dialog =
   | { kind: 'prompt'; title: string; label: string; value: string; resolve: (v: string | null) => void }
   | { kind: 'adjust'; adjustment: AdjustmentKind }
   | { kind: 'blur' }
+  | { kind: 'filter'; filter: FilterKind }
+  | { kind: 'colorRange' }
   | { kind: 'imageSize' }
   | { kind: 'canvasSize' }
   | { kind: 'feather' }
@@ -119,6 +144,10 @@ export interface EditorState {
   /** Clone Stamp / Healing Brush source (Alt+click) and the offset in use. */
   cloneSource: { docId: string; x: number; y: number } | null
   cloneOffset: { docId: string; dx: number; dy: number } | null
+  /** History Brush source: a history state of a document (null: the oldest state kept). */
+  historySource: { docId: string; state: ImageDocument } | null
+  /** Tool groups: the member last chosen in each group (shown in the tool rail). */
+  toolPick: Record<string, ToolId>
   /** Soft proofing (display only): the proof space, whether it is shown, and the gamut warning. */
   proofSetup: ProofKind
   proofOn: boolean
@@ -161,6 +190,8 @@ export const useEditor = create<EditorState>(() => ({
   textEdit: null,
   cloneSource: null,
   cloneOffset: null,
+  historySource: null,
+  toolPick: {},
   keyOverrides: {},
   proofSetup: 'srgb',
   proofOn: false,

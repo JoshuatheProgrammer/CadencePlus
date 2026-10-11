@@ -1,4 +1,5 @@
 import type { SelMode } from '@core/selection'
+import type { ToneRange } from '@core/filters'
 import { commitCrop } from '../state/commands'
 import { actualPixels, fillScreen, fitOnScreen } from '../state/doc-actions'
 import * as A from '../state/image-actions'
@@ -37,7 +38,45 @@ const MODES: { v: SelMode; label: string; title: string }[] = [
   { v: 'intersect', label: 'Intersect', title: 'Intersect with selection (Shift+Alt)' }
 ]
 
-function BrushOptions({ tool }: { tool: 'brush' | 'eraser' | 'clone' | 'heal' }) {
+type RetouchTool = 'blur' | 'sharpen' | 'smudge' | 'dodge' | 'burn' | 'sponge'
+
+/** Retouching brushes: size and softness, plus how strong one stroke is. */
+function RetouchOptions({ tool }: { tool: RetouchTool }) {
+  const o = useEditor((s) => s.options[tool])
+  const up = (p: Partial<ToolOptions['blur']>) => setToolOption(tool, p)
+  const strengthLabel = tool === 'dodge' || tool === 'burn' ? 'Exposure' : tool === 'sponge' ? 'Flow' : 'Strength'
+  return (
+    <>
+      <SliderField label="Size" value={o.size} min={1} max={1000} unit="px" width={110} onChange={(v) => up({ size: v })} title="[ and ] change size" />
+      <SliderField label="Hardness" value={o.hardness} min={0} max={100} unit="%" width={70} onChange={(v) => up({ hardness: v })} title="Shift+[ and Shift+] change hardness" />
+      <span className="sep-v" />
+      {(tool === 'dodge' || tool === 'burn') && (
+        <>
+          <span className="label">Range</span>
+          <select value={(o as ToolOptions['dodge']).range} onChange={(e) => setToolOption(tool, { range: e.target.value as ToneRange })}>
+            <option value="shadows">Shadows</option>
+            <option value="midtones">Midtones</option>
+            <option value="highlights">Highlights</option>
+          </select>
+        </>
+      )}
+      {tool === 'sponge' && (
+        <Seg
+          value={(o as ToolOptions['sponge']).desaturate ? 'de' : 'sat'}
+          options={[
+            { v: 'de', label: 'Desaturate' },
+            { v: 'sat', label: 'Saturate' }
+          ]}
+          onChange={(v) => setToolOption('sponge', { desaturate: v === 'de' })}
+        />
+      )}
+      <SliderField label={strengthLabel} value={o.strength} min={1} max={100} unit="%" width={80} onChange={(v) => up({ strength: v })} title="Number keys 1–0 set it" />
+      <SliderField label="Spacing" value={o.spacing} min={1} max={200} unit="%" width={60} onChange={(v) => up({ spacing: v })} />
+    </>
+  )
+}
+
+function BrushOptions({ tool }: { tool: 'brush' | 'eraser' | 'clone' | 'heal' | 'historyBrush' }) {
   const o = useEditor((s) => s.options[tool])
   const up = (p: Partial<ToolOptions['brush']>) => setToolOption(tool, p)
   return (
@@ -209,7 +248,19 @@ function ToolOptionsBar() {
       break
     case 'brush':
     case 'eraser':
+    case 'historyBrush':
       body = <BrushOptions tool={tool} />
+      break
+    case 'blur':
+    case 'sharpen':
+    case 'smudge':
+    case 'dodge':
+    case 'burn':
+    case 'sponge':
+      body = <RetouchOptions tool={tool} />
+      break
+    case 'polyLasso':
+      body = <Seg value={o.lasso.mode} options={MODES} onChange={(v) => setToolOption('lasso', { mode: v })} />
       break
     case 'clone':
     case 'heal':

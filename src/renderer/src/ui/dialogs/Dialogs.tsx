@@ -12,6 +12,8 @@ import { AdjustmentEditor } from '../AdjustmentEditor'
 import { Modal, NumberInput, SliderField } from '@cadence/ui/components'
 import { Logo, Wordmark } from '../icons'
 import { ShortcutsDialog } from './ShortcutsDialog'
+import { FilterDialog } from './FilterDialog'
+import { ColorRangeDialog } from './ColorRangeDialog'
 
 const close = () => set({ dialog: null, filterPreview: null })
 
@@ -550,6 +552,10 @@ export function Dialogs() {
       return <AdjustDialog kind={d.adjustment} />
     case 'blur':
       return <BlurDialog />
+    case 'filter':
+      return <FilterDialog kind={d.filter} />
+    case 'colorRange':
+      return activeDoc() ? <ColorRangeDialog /> : null
     case 'imageSize':
       return activeDoc() ? <ImageSizeDialog /> : null
     case 'canvasSize':

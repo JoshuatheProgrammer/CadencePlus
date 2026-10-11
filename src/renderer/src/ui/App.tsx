@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { DockviewReact, type DockviewApi, type DockviewReadyEvent, type DockviewTheme, type IDockviewPanelProps } from 'dockview-react'
 import { formatZoom } from '@core/view'
 import { formatLabel } from '../engine/format'
@@ -8,9 +8,9 @@ import { command, currentColor, handleKeydown, keysFor, run } from '../state/com
 import { confirmQuit, displayName, formatBytes, newDocument, openDialog, openPaths, setZoom, titleFor } from '../state/doc-actions'
 import * as A from '../state/image-actions'
 import { activeDocState, get, isDirty, set, useEditor, type PanelId } from '../state/store'
-import { TOOLS } from '../state/tools'
+import { groupOf, toolCommand, TOOLS, type ToolDef } from '../state/tools'
 import { CanvasPanel } from './canvas/CanvasPanel'
-import { ContextMenuHost } from '@cadence/ui/components'
+import { ContextMenuHost, showContextMenu } from '@cadence/ui/components'
 import { Dialogs, PRESETS } from './dialogs/Dialogs'
 import { IconDefaultColors, IconImage, IconNewDoc, IconSwap, Logo, Wordmark } from './icons'
 import { OptionsBar } from './OptionsBar'
@@ -206,8 +206,22 @@ function menus(): Record<string, MenuEntry[]> {
       { cmd: 'layer.mergeVisible' },
       { cmd: 'layer.flatten' }
     ],
-    Select: [{ cmd: 'select.all' }, { cmd: 'select.deselect' }, { cmd: 'select.inverse' }, { sep: true }, { cmd: 'select.feather' }],
-    Filter: [{ label: 'Blur', submenu: () => [{ cmd: 'filter.blur' }] }],
+    Select: [
+      { cmd: 'select.all' },
+      { cmd: 'select.deselect' },
+      { cmd: 'select.inverse' },
+      { sep: true },
+      { cmd: 'select.colorRange' },
+      { cmd: 'select.feather' },
+      { sep: true },
+      { cmd: 'select.quickMask', checked: !!activeDocState()?.history.present.quickMask }
+    ],
+    Filter: [
+      { label: 'Blur', submenu: () => [{ cmd: 'filter.blur' }, { cmd: 'filter.motionBlur' }] },
+      { label: 'Sharpen', submenu: () => [{ cmd: 'filter.unsharp' }] },
+      { label: 'Noise', submenu: () => [{ cmd: 'filter.noise' }] },
+      { label: 'Other', submenu: () => [{ cmd: 'filter.highPass' }] }
+    ],
     View: [
       { cmd: 'view.zoomIn' },
       { cmd: 'view.zoomOut' },
@@ -355,30 +369,63 @@ function TitleBar() {
 // Tool rail
 // ---------------------------------------------------------------------------
 
+/** Group flyout: right-click (or press and hold) a grouped tool. */
+function toolFlyout(e: { clientX: number; clientY: number; preventDefault?: () => void }, group: ToolDef[]): void {
+  const tool = get().tool
+  showContextMenu(
+    e,
+    group.map((m) => ({ label: m.label, kbd: keysFor(toolCommand(m))[0], checked: tool === m.id, action: () => run(`tool.${m.id}`) }))
+  )
+}
+
 function ToolRail() {
   const tool = useEditor((s) => s.tool)
+  const pick = useEditor((s) => s.toolPick)
   const fg = useEditor((s) => s.fg)
   const bg = useEditor((s) => s.bg)
   const target = useEditor((s) => s.colorTarget)
+  const hold = useRef<number>(0)
+  const seen = new Set<string>()
   return (
     <div className="toolrail" role="toolbar" aria-label="Tools" aria-orientation="vertical">
       <div className="grip" />
-      {TOOLS.map((t, i) =>
-        t ? (
+      {TOOLS.map((t0, i) => {
+        if (!t0) return <div key={`sep${i}`} className="rail-sep" />
+        // One slot per group, showing the member in use (or last used).
+        if (t0.group && seen.has(t0.group)) return null
+        if (t0.group) seen.add(t0.group)
+        const members = groupOf(t0.id)
+        const t = members.find((m) => m.id === tool) ?? members.find((m) => m.id === pick[t0.group ?? '']) ?? t0
+        const keys = keysFor(toolCommand(t))
+        const active = members.some((m) => m.id === tool)
+        return (
           <button
-            key={t.id}
-            className={`tool-btn${tool === t.id ? ' active' : ''}`}
+            key={t0.group ?? t.id}
+            className={`tool-btn${active ? ' active' : ''}${members.length > 1 ? ' group' : ''}`}
             disabled={!!t.unavailable}
-            aria-pressed={tool === t.id}
-            title={t.unavailable ? `${t.label} — unavailable\n${t.unavailable}` : `${t.label}${keysFor(`tool.${t.id}`).length ? ` (${keysFor(`tool.${t.id}`).join(', ')})` : ''}`}
+            aria-pressed={active}
+            title={
+              t.unavailable
+                ? `${t.label} — unavailable\n${t.unavailable}`
+                : `${t.label}${keys.length ? ` (${keys.join(', ')})` : ''}${members.length > 1 ? `\nRight-click for ${members.filter((m) => m !== t).map((m) => m.label).join(', ')}` : ''}`
+            }
             onClick={() => run(`tool.${t.id}`)}
+            onContextMenu={members.length > 1 ? (e) => (e.preventDefault(), toolFlyout(e, members)) : undefined}
+            onPointerDown={
+              members.length > 1
+                ? (e) => {
+                    const { clientX, clientY } = e
+                    hold.current = window.setTimeout(() => toolFlyout({ clientX, clientY }, members), 450)
+                  }
+                : undefined
+            }
+            onPointerUp={() => clearTimeout(hold.current)}
+            onPointerLeave={() => clearTimeout(hold.current)}
           >
             <t.icon size={17} />
           </button>
-        ) : (
-          <div key={`sep${i}`} className="rail-sep" />
         )
-      )}
+      })}
       <div className="color-chips">
         <button className={`color-chip bg${target === 'bg' ? ' editing' : ''}`} style={{ background: bg }} title="Background colour — click to edit in the Color panel" onClick={() => set({ colorTarget: 'bg' })} />
         <button className={`color-chip fg${target === 'fg' ? ' editing' : ''}`} style={{ background: fg }} title="Foreground colour — click to edit in the Color panel" onClick={() => set({ colorTarget: 'fg' })} />

@@ -7,10 +7,10 @@ import { poolCanvas } from '../../engine/tiles'
 import { commitCrop } from '../../state/commands'
 import { openPaths, setView } from '../../state/doc-actions'
 import { activeDocState, get, set, useEditor } from '../../state/store'
-import { toolDef } from '../../state/tools'
+import { isBrushTool, toolDef } from '../../state/tools'
 import { checkerTile, token } from '@cadence/ui/tokens'
 import { drawOverlay, hasAnts, onOverlayRequest, overlay, requestOverlay } from './overlay'
-import { HANDLERS, panSession, setEventMapper, transformHitAt, transformSession, type Pt, type Session, type ToolContext } from './tool-handlers'
+import { HANDLERS, panSession, polyLassoActive, setEventMapper, transformHitAt, transformSession, type Pt, type Session, type ToolContext } from './tool-handlers'
 import { transformMatrix } from '../../state/transform-actions'
 import { TextEditor } from './TextEditor'
 
@@ -46,7 +46,7 @@ export function Viewport() {
   const [tfCursor, setTfCursor] = useState<string | null>(null)
   const showGrid = useEditor((s) => s.showPixelGrid)
   const zoomOut = useEditor((s) => s.options.zoom.out)
-  const brushSize = useEditor((s) => (s.tool === 'brush' || s.tool === 'eraser' || s.tool === 'clone' || s.tool === 'heal' ? s.options[s.tool].size : null))
+  const brushSize = useEditor((s) => (isBrushTool(s.tool) ? s.options[s.tool].size : null))
   const doc = ds?.history.present ?? null
   // The screen canvas uses the document's colour space, so wide-gamut displays show P3 colours.
   const screenSpace = doc ? docColor(doc).space : 'srgb'
@@ -97,7 +97,7 @@ export function Viewport() {
       ctx.fillStyle = ctx.createPattern(checkerTile(8 * size.dpr), 'repeat')!
       ctx.fillRect(r.x, r.y, r.w, r.h)
       const comp = poolCanvas('view.composite', W, H)
-      renderDocument(comp, doc, { xf, width: W, height: H, stroke, filterPreview, maskView, float: transform ? { fs: transform.fs, m: transformMatrix(transform), params: transform.params } : null })
+      renderDocument(comp, doc, { xf, width: W, height: H, stroke, filterPreview, maskView, quickMask: true, float: transform ? { fs: transform.fs, m: transformMatrix(transform), params: transform.params } : null })
       // Soft proof / gamut warning are applied to the display only.
       const proof = proofOn ? proofSetup : null
       if (!(proof || gamutWarning) || !drawProofed(ctx, comp, proof, gamutWarning, screenSpace)) ctx.drawImage(comp, 0, 0)
@@ -237,7 +237,7 @@ export function Viewport() {
     if (!d?.view) return
     const p = toPt(e, d.view)
     overlay.pointer = { x: p.sx, y: p.sy }
-    if (brushSize) requestOverlay()
+    if (brushSize || polyLassoActive()) requestOverlay()
     const s = get()
     if (!s.cursor || Math.floor(s.cursor.x) !== Math.floor(p.x) || Math.floor(s.cursor.y) !== Math.floor(p.y)) set({ cursor: { x: p.x, y: p.y } })
     session.current?.move(p, e.nativeEvent)

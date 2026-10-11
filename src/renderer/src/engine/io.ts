@@ -207,6 +207,8 @@ async function pngOf(bmp: ImageBitmap, f: PixelFormat): Promise<Uint8Array> {
 
 /** Encodes a document and every tile/mask it references. */
 export async function encodeProject(doc: ImageDocument, appVersion: string): Promise<Uint8Array> {
+  // Quick Mask is a temporary editing mode; it is not saved.
+  if (doc.quickMask) doc = { ...doc, quickMask: undefined }
   const f = docColor(doc)
   const tileIds = new Set<string>()
   const maskIds = new Set<string>()

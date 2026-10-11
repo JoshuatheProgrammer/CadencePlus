@@ -819,6 +819,28 @@
 .history-row.future {
   color: var(--c-text-3);
 }
+.history-row .history-src {
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius);
+  background: transparent;
+  color: transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.history-row:hover .history-src {
+  color: var(--c-text-3);
+}
+.history-row .history-src.on {
+  color: var(--c-accent);
+}
+.history-row .history-src:hover {
+  background: var(--c-raised);
+  color: var(--c-text);
+}
 .history-row .idx {
   color: var(--c-text-3);
   font-family: var(--mono);
@@ -1431,4 +1453,36 @@
 }
 .kbd-x:hover {
   color: var(--c-danger);
+}
+
+/* ---------- Color Range ---------- */
+.color-range {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+}
+.color-range .form-grid {
+  flex: 1;
+}
+.color-range-previews {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.color-range-previews figure {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+.color-range-previews canvas {
+  max-width: 220px;
+  max-height: 140px;
+  border: 1px solid var(--c-border);
+  background: var(--c-inset);
+}
+.color-range-previews figcaption {
+  color: var(--c-text-3);
+  font-size: var(--fs-sm);
 }

@@ -37,6 +37,40 @@ export const IconLasso = I(
     <path d="M4.6 9.2c-.8.9-.6 2 .4 2.5s1.4 1.6.9 2.8" />
   </>
 )
+export const IconPolyLasso = I(
+  <>
+    <path d="M3 4.5L8.5 2l5 3.5-2 4.5-6 .5z" />
+    <path d="M5.5 10.5c-.9.8-.7 1.9.3 2.4s1.2 1.4.8 2.1" />
+  </>
+)
+export const IconDodge = I(
+  <>
+    <circle cx="10" cy="5.5" r="3.6" />
+    <path d="M7.4 8.1L2.5 13" />
+  </>
+)
+export const IconBurn = I(<path d="M2.5 13.5c1-2.6 3.2-4.3 5.6-4.4M8.1 9.1c1.9-.1 3.6-1.3 4.4-3.1.6-1.3.5-3-.4-4-1.8.4-3 1.3-3.8 2.6-.9 1.4-1.1 3-.2 4.5z" />)
+export const IconSponge = I(
+  <>
+    <path d="M3.5 5.5c0-1.5 1.2-2.5 2.5-2.5h4c1.3 0 2.5 1 2.5 2.5v5c0 1.5-1.2 2.5-2.5 2.5H6c-1.3 0-2.5-1-2.5-2.5z" />
+    <path d="M6.5 6h.1M9.5 6.5h.1M7 9.5h.1M9.8 10h.1M8 7.8h.1" />
+  </>
+)
+export const IconBlurTool = I(<path d="M8 1.8C6.5 4.4 4 7 4 9.8a4 4 0 008 0C12 7 9.5 4.4 8 1.8z" />)
+export const IconSharpen = I(<path d="M8 1.8L12.5 14h-9z" />)
+export const IconSmudge = I(
+  <>
+    <path d="M6.3 9.4V3.3a1 1 0 012 0v4.4M8.3 6.3a1 1 0 012 0v1.6M10.3 7.2a1 1 0 012 0v2.9c0 2.2-1.6 3.9-3.8 3.9-1.5 0-2.5-.6-3.4-1.8L3.6 9.8a1 1 0 011.6-1.2l1.1 1.3" />
+  </>
+)
+export const IconHistoryBrush = I(
+  <>
+    <path d="M14 2l-5.6 6.6-1.4-1.4L13.6 1.6z" />
+    <path d="M6.5 8.3c-1.4 0-2.4 1-2.4 2.4 0 1-.7 1.8-1.6 2.1 1.6.9 4.6.8 5.4-.8.5-1.1.3-2.5-.6-3.1" />
+    <path d="M2 2.5A3 3 0 117.2 5" />
+    <path d="M2 1v1.8h1.8" />
+  </>
+)
 export const IconWand = I(<path d="M2.5 13.5l7.5-7.5M9 5l2 2M12 1.5v2.5M10.75 2.75h2.5M14 6v1.5M13.25 6.75h1.5M6.5 2v1.5M5.75 2.75h1.5" />)
 export const IconCrop = I(<path d="M4.5 1.5v10h10M1.5 4.5h10v10" />)
 export const IconEyedropper = I(<path d="M10.2 2.3a1.6 1.6 0 012.3 0l1.2 1.2a1.6 1.6 0 010 2.3L12 7.5l.8.8-1.2 1.2-4.3-4.3 1.2-1.2.8.8zM8.6 6.1L3 11.7V13h1.3l5.6-5.6" />)

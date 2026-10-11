@@ -8,7 +8,7 @@
  * edges are snapped to whole target pixels so scaled tiles never show seams.
  */
 import { adjustmentOp, type PixelOp } from '@core/adjustments'
-import { parseTileKey, tileKey, TILE, type ImageDocument, type Layer, type TileSurface } from '@core/model'
+import { QUICK_MASK_ID, parseTileKey, tileKey, TILE, type ImageDocument, type Layer, type TileSurface } from '@core/model'
 import type { Affine, TransformParams } from '@core/affine'
 import { isVector } from '@core/model'
 import { tree } from '@core/tree'
@@ -40,6 +40,8 @@ export interface StrokePreview {
   maskValue?: number
   /** Clone Stamp: the stroke shows `canvas` (document-sized) shifted so pixel p shows p + (dx, dy). */
   clone?: { canvas: OffscreenCanvas; dx: number; dy: number }
+  /** Retouching: the stroke replaces pixels by its coverage (layer × (1 − c) + clone × c) instead of painting over. */
+  mix?: boolean
 }
 
 /** A destructive filter being previewed on one layer (adjustment dialogs). */
@@ -54,6 +56,8 @@ export interface RenderOptions {
   height: number
   stroke?: StrokePreview | null
   filterPreview?: FilterPreview | null
+  /** Show the Quick Mask as a red overlay (viewport only). */
+  quickMask?: boolean
   /** Render just this layer at full opacity, normal blend (thumbnails, sampling). */
   onlyLayer?: string
   /** false: don't clip to the canvas (merging keeps pixels outside it). */
@@ -233,6 +237,20 @@ export function renderDocument(target: OffscreenCanvas, doc: ImageDocument, o: R
   const layers = only ? [{ ...only, visible: true, opacity: 1, blend: 'normal' as const, mask: null }] : (tree(doc.layers).get(null) ?? [])
 
   renderLayers(target, ctx, doc, layers, o, W, H, r, 0)
+  if (o.quickMask && doc.quickMask && !only) {
+    // Masked areas show as a 50% red film, including a stroke in progress.
+    const pseudo = { id: QUICK_MASK_ID, mask: { ...doc.quickMask, enabled: true } } as Layer
+    const hc = hideOnTarget(pseudo, doc, o.xf, W, H, o.stroke?.layerId === QUICK_MASK_ID ? o.stroke : null)
+    const hg = ctx2d(hc)
+    hg.globalCompositeOperation = 'source-in'
+    hg.fillStyle = '#ff0000'
+    hg.fillRect(0, 0, W, H)
+    hg.globalCompositeOperation = 'source-over'
+    ctx.save()
+    ctx.globalAlpha = 0.5
+    ctx.drawImage(hc, 0, 0)
+    ctx.restore()
+  }
   ctx.restore()
 }
 
@@ -339,11 +357,15 @@ function renderLayers(target: OffscreenCanvas, ctx: Ctx2D, doc: ImageDocument, l
     }
 
     if (pixelStroke) {
-      const sc = strokeOnTarget(pixelStroke, doc, o.xf, W, H)
       tg.save()
       tg.globalAlpha = pixelStroke.opacity
-      tg.globalCompositeOperation = pixelStroke.erase ? 'destination-out' : 'source-over'
-      tg.drawImage(sc, 0, 0)
+      if (pixelStroke.mix) {
+        // Cut the coverage out, then add the processed pixels inside it (exact mix).
+        tg.globalCompositeOperation = 'destination-out'
+        tg.drawImage(strokeOnTarget({ ...pixelStroke, clone: undefined }, doc, o.xf, W, H), 0, 0)
+        tg.globalCompositeOperation = 'lighter'
+      } else tg.globalCompositeOperation = pixelStroke.erase ? 'destination-out' : 'source-over'
+      tg.drawImage(strokeOnTarget(pixelStroke, doc, o.xf, W, H), 0, 0)
       tg.restore()
     }
 

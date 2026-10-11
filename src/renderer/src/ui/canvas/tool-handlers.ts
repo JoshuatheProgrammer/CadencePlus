@@ -2,7 +2,7 @@
  * Pointer behaviour for each tool. A handler receives the press and returns a
  * session that follows the drag; commits happen on release as single edits.
  */
-import { activeLayer, type ImageDocument, type Rect } from '@core/model'
+import { activeLayer, QUICK_MASK_ID, type ImageDocument, type Rect } from '@core/model'
 import { apply, scaleFromHandle } from '@core/affine'
 import * as E from '@core/edit'
 import { descendants, effectivelyVisible } from '@core/tree'
@@ -12,11 +12,12 @@ import { clampZoom, panBy, zoomAt, type View } from '@core/view'
 import { Stroke } from '../../engine/brush'
 import { layerAlphaAt } from '../../engine/pixels'
 import { clonePixels, healPixels, sourceSnapshot } from '../../engine/clone'
+import { historySource, retouchSource, Smudger, type RetouchKind } from '../../engine/retouch'
 import { floatSize } from '../../engine/transform'
 import { commitText, createShape, editText, moveVector, startNewText, textLayerAt } from '../../state/vector-actions'
 import { edit, setView } from '../../state/doc-actions'
 import * as A from '../../state/image-actions'
-import { get, set, toast, type ToolId } from '../../state/store'
+import { get, set, toast, useEditor, type ToolId } from '../../state/store'
 import { commitTransform, startTransform, transformMatrix, updateTransform } from '../../state/transform-actions'
 import { cropHandleAt, overlay, requestOverlay, type CropHandle } from './overlay'
 
@@ -212,6 +213,62 @@ const lasso: Handler = (_c, p, e) => {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Polygonal Lasso: click corners; close on the first point, a double-click or Enter.
+// ---------------------------------------------------------------------------
+
+let poly: { docId: string; pts: number[]; mode: SelMode } | null = null
+
+export const polyLassoActive = (): boolean => !!poly
+
+function endPoly(commit: boolean): void {
+  const p = poly
+  poly = null
+  overlay.poly = null
+  window.removeEventListener('keydown', polyKeys, true)
+  requestOverlay()
+  if (!p || !commit) return
+  if (p.pts.length < 6) {
+    if (p.mode === 'replace') A.deselect()
+    return
+  }
+  A.addSelectionShape({ kind: 'polygon', points: p.pts.map((v) => Math.round(v * 100) / 100) }, p.mode, modeLabel(p.mode, 'Polygonal Lasso'))
+}
+
+function polyKeys(e: KeyboardEvent): void {
+  if (!poly) return
+  if (e.key === 'Enter') endPoly(true)
+  else if (e.key === 'Escape') endPoly(false)
+  else if (e.key === 'Backspace' || e.key === 'Delete') {
+    poly.pts.length -= 2
+    if (poly.pts.length < 2) return endPoly(false), e.preventDefault(), e.stopPropagation()
+    requestOverlay()
+  } else return
+  e.preventDefault()
+  e.stopPropagation()
+}
+
+// Switching tool or document abandons an unfinished outline.
+useEditor.subscribe((s) => {
+  if (poly && (s.tool !== 'polyLasso' || s.activeId !== poly.docId)) endPoly(false)
+})
+
+const polyLasso: Handler = (c, p, e) => {
+  if (!poly || poly.docId !== c.docId) {
+    poly = { docId: c.docId, pts: [p.x, p.y], mode: selMode(e, get().options.lasso.mode) }
+    overlay.poly = poly
+    window.addEventListener('keydown', polyKeys, true)
+  } else {
+    const pts = poly.pts
+    const near = (x: number, y: number) => Math.hypot(p.x - x, p.y - y) * c.view.zoom < 7
+    if (pts.length >= 6 && near(pts[0], pts[1])) return endPoly(true), NOOP
+    if (!near(pts[pts.length - 2], pts[pts.length - 1])) pts.push(p.x, p.y)
+    if (e.detail >= 2) return endPoly(true), NOOP
+  }
+  requestOverlay()
+  return NOOP
+}
+
 const wand: Handler = (_c, p, e) => {
   A.wandSelect(p.x, p.y, selMode(e, get().options.wand.mode))
   return NOOP
@@ -247,7 +304,7 @@ function paint(erase: boolean): Handler {
       stroke.add(last.x, last.y, pressure(e))
       stroke.lineTo(p.x, p.y, pressure(e))
     } else stroke.add(p.x, p.y, pressure(e))
-    const preview = () => set({ stroke: { layerId: t.layer.id, canvas: stroke.canvas, opacity: stroke.opacity, erase, rev: stroke.rev, target: t.kind, maskValue } })
+    const preview = () => set({ stroke: { layerId: t.quick ? QUICK_MASK_ID : t.layer.id, canvas: stroke.canvas, opacity: stroke.opacity, erase, rev: stroke.rev, target: t.kind, maskValue } })
     preview()
     let lastPt = { x: p.x, y: p.y }
     return {
@@ -337,6 +394,89 @@ function cloneTool(heal: boolean): Handler {
       }
     }
   }
+}
+
+/** Follows a brush drag (coalesced pointer events included) into `add`. */
+function brushDrag(c: ToolContext, add: (x: number, y: number, pressure: number) => void, preview: () => void, done: () => void): Session {
+  const pressure = (ev: PointerEvent) => (ev.pointerType === 'pen' ? ev.pressure : 1)
+  return {
+    move(q, ev) {
+      const evs = typeof ev.getCoalescedEvents === 'function' ? ev.getCoalescedEvents() : []
+      if (evs.length > 1)
+        for (const ce of evs) {
+          const d = toDocFromEvent(c, ce)
+          add(d.x, d.y, pressure(ce))
+        }
+      else add(q.x, q.y, pressure(ev))
+      preview()
+    },
+    up() {
+      done()
+      set({ stroke: null })
+    },
+    cancel() {
+      set({ stroke: null })
+    }
+  }
+}
+
+const RETOUCH_LABEL: Record<RetouchKind, string> = { blur: 'Blur Tool', sharpen: 'Sharpen Tool', dodge: 'Dodge', burn: 'Burn', sponge: 'Sponge' }
+
+/**
+ * Blur, Sharpen, Dodge, Burn, Sponge: the stroke's coverage mixes the layer
+ * toward a processed copy of itself (made once when the stroke starts).
+ */
+function retouch(kind: RetouchKind): Handler {
+  return (c, p, e) => {
+    const t = A.paintTarget('retouch it')
+    if (!t) return null
+    if (t.kind === 'mask') return toast(`The ${RETOUCH_LABEL[kind]} works on pixels. Click the layer thumbnail to target them.`, 'warn'), null
+    const o = get().options[kind]
+    const processed = retouchSource(c.doc, t.layer, { kind, size: o.size, strength: o.strength, range: 'range' in o ? o.range : undefined, desaturate: 'desaturate' in o ? o.desaturate : undefined })
+    const stroke = new Stroke(c.doc.width, c.doc.height, '#000000', { ...o, opacity: 100 }, false)
+    const preview = () => set({ stroke: { layerId: t.layer.id, canvas: stroke.canvas, opacity: 1, erase: false, rev: stroke.rev, clone: { canvas: processed, dx: 0, dy: 0 }, mix: true } })
+    stroke.add(p.x, p.y, e.pointerType === 'pen' ? e.pressure : 1)
+    preview()
+    return brushDrag(c, (x, y, pr) => stroke.add(x, y, pr), preview, () => {
+      if (stroke.bounds) A.commitMix(processed, stroke.canvas, stroke.bounds, 1, RETOUCH_LABEL[kind])
+    })
+  }
+}
+
+/** Smudge: carries colour along the drag. */
+const smudge: Handler = (c, p) => {
+  const t = A.paintTarget('smudge it')
+  if (!t) return null
+  if (t.kind === 'mask') return toast('The Smudge tool works on pixels. Click the layer thumbnail to target them.', 'warn'), null
+  const o = get().options.smudge
+  const sm = new Smudger(c.doc, t.layer, o.size, o.hardness, o.strength, o.spacing)
+  sm.add(p.x, p.y)
+  const preview = () => set({ stroke: { layerId: t.layer.id, canvas: sm.coverage, opacity: 1, erase: false, rev: sm.rev, clone: { canvas: sm.work, dx: 0, dy: 0 }, mix: true } })
+  preview()
+  return brushDrag(c, (x, y) => sm.add(x, y), preview, () => {
+    if (sm.bounds) A.commitMix(sm.work, sm.coverage, sm.bounds, 1, 'Smudge')
+  })
+}
+
+/** History Brush: paints the layer back toward its pixels in the chosen history state. */
+const historyBrush: Handler = (c, p, e) => {
+  const t = A.paintTarget('paint on it')
+  if (!t) return null
+  if (t.kind === 'mask') return toast('The History Brush works on pixels. Click the layer thumbnail to target them.', 'warn'), null
+  const ds = get().docs.find((d) => d.id === c.docId)!
+  const chosen = get().historySource
+  const state = chosen?.docId === c.docId ? chosen.state : (ds.history.past[0]?.state ?? ds.history.present)
+  if (state.width !== c.doc.width || state.height !== c.doc.height) return toast('The canvas size changed since that history state, so the History Brush cannot paint from it. Choose a later state in the History panel.', 'warn'), null
+  const src = historySource(state, t.layer.id)
+  if (!src) return toast(`“${t.layer.name}” did not exist in that history state. Choose a later state in the History panel.`, 'warn'), null
+  const o = get().options.historyBrush
+  const stroke = new Stroke(c.doc.width, c.doc.height, '#000000', o, false)
+  const preview = () => set({ stroke: { layerId: t.layer.id, canvas: stroke.canvas, opacity: stroke.opacity, erase: false, rev: stroke.rev, clone: { canvas: src, dx: 0, dy: 0 }, mix: true } })
+  stroke.add(p.x, p.y, e.pointerType === 'pen' ? e.pressure : 1)
+  preview()
+  return brushDrag(c, (x, y, pr) => stroke.add(x, y, pr), preview, () => {
+    if (stroke.bounds) A.commitMix(src, stroke.canvas, stroke.bounds, stroke.opacity, 'History Brush')
+  })
 }
 
 /** Set by the viewport: maps a pointer event to document coordinates. */
@@ -483,6 +623,7 @@ export const HANDLERS: Partial<Record<ToolId, Handler>> = {
   move,
   marquee,
   lasso,
+  polyLasso,
   wand,
   crop,
   eyedropper,
@@ -490,6 +631,13 @@ export const HANDLERS: Partial<Record<ToolId, Handler>> = {
   eraser: paint(true),
   clone: cloneTool(false),
   heal: cloneTool(true),
+  historyBrush,
+  blur: retouch('blur'),
+  sharpen: retouch('sharpen'),
+  dodge: retouch('dodge'),
+  burn: retouch('burn'),
+  sponge: retouch('sponge'),
+  smudge,
   gradient,
   bucket,
   zoom

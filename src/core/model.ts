@@ -132,7 +132,16 @@ export interface ImageDocument {
   target?: 'pixels' | 'mask'
   /** Working colour: bits per channel and colour space (missing = 8-bit sRGB). */
   color?: DocColor
+  /**
+   * Quick Mask mode: while present, painting edits this mask instead of the
+   * layer (alpha = masked, i.e. not selected). Leaving the mode turns it back
+   * into the selection. Never saved.
+   */
+  quickMask?: { x: number; y: number; tiles: TileMap }
 }
+
+/** Stroke-preview id for painting on the Quick Mask (matches no layer). */
+export const QUICK_MASK_ID = '#quickmask'
 
 export interface DocColor {
   depth: 8 | 16
@@ -237,4 +246,5 @@ export function collectTileIds(doc: ImageDocument, out: Set<string>): void {
     if (l.content.type === 'raster') for (const id of Object.values(l.content.tiles)) out.add(id)
     if (l.mask) for (const id of Object.values(l.mask.tiles)) out.add(id)
   }
+  if (doc.quickMask) for (const id of Object.values(doc.quickMask.tiles)) out.add(id)
 }

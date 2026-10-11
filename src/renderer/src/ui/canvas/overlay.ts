@@ -12,6 +12,8 @@ import { transformGeometry } from './tool-handlers'
 export interface OverlayState {
   marquee?: { shape: 'rect' | 'ellipse'; rect: Rect } | null
   lasso?: number[] | null
+  /** Polygonal Lasso in progress: its corners (document) and its document. */
+  poly?: { docId: string; pts: number[] } | null
   gradient?: [number, number, number, number] | null
   zoomRect?: Rect | null
   /** Clone/heal source marker (document coordinates). */
@@ -199,6 +201,20 @@ export function drawOverlay(canvas: HTMLCanvasElement, f: OverlayFrame): void {
       const [x, y] = S(pts[i], pts[i + 1])
       p.lineTo(x, y)
     }
+    dualStroke(ctx, p, 1, true)
+  }
+
+  if (overlay.poly && overlay.poly.docId === f.doc.id && overlay.poly.pts.length >= 2) {
+    const pts = overlay.poly.pts
+    const p = new Path2D()
+    const [sx, sy] = S(pts[0], pts[1])
+    p.moveTo(sx, sy)
+    for (let i = 2; i < pts.length; i += 2) {
+      const [x, y] = S(pts[i], pts[i + 1])
+      p.lineTo(x, y)
+    }
+    if (overlay.pointer) p.lineTo(overlay.pointer.x, overlay.pointer.y)
+    p.rect(sx - 3.5, sy - 3.5, 7, 7)
     dualStroke(ctx, p, 1, true)
   }
 

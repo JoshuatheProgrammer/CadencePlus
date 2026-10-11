@@ -78,7 +78,10 @@ Suites: 58 unit (`npm test`) · 65 end-to-end (`npm run e2e`), all passing.
 | New / Add / Subtract / Intersect (options bar or Shift / Alt / Shift+Alt) | ✅ | |
 | Select All, Deselect, Inverse, Feather | ✅ | |
 | Marching ants | ✅ | Computed at screen resolution. |
-| Quick Mask, Select and Mask, polygonal lasso, transform selection | 📋 | |
+| Polygonal Lasso (Shift+L cycles the lasso group) | ✅ | Click corners; closes on the first point, a double-click or Enter; Backspace removes the last corner; Esc cancels. Switching tool or document abandons it. |
+| Quick Mask (Q) | ✅ | The selection becomes a mask shown as a 50% red film (screen only, never in pixels or exports); black paint masks, white unmasks, greys and soft brushes give partial selection; Q again turns it back into the selection. Recorded in history; not saved in files; leave it before changing the canvas. |
+| Color Range (Select menu) | ✅ | Sampled colour (pick in the dialog's image preview or use the foreground colour) with fuzziness; Reds/Yellows/Greens/Cyans/Blues/Magentas; Highlights/Midtones/Shadows. Soft selection, all layers or the current one, New/Add/Subtract/Intersect, live greyscale preview. Our own range curves, not Photoshop's exact ones. |
+| Select and Mask, transform selection | 📋 | |
 
 ### Painting and tools
 | Feature | Status | Notes |
@@ -101,7 +104,10 @@ Suites: 58 unit (`npm test`) · 65 end-to-end (`npm run e2e`), all passing.
 | Type on a path, paragraph (box) type, character/paragraph panels, pen paths | 📋 | |
 | Clone Stamp (S) | ✅ | Alt+click sets the source; aligned or non-aligned offset; samples the current layer or all layers; live preview; brush size/hardness/opacity/flow. |
 | Healing Brush (J) | ✅ | Clone with frequency-separation healing on release: the source's detail on the destination's own colour and light (verified: healing a light area from a dark source keeps the light tone). Spot healing (no source) is not built. |
-| Dodge/burn, sponge, smudge | 📋 | Phase 6. |
+| Dodge, Burn, Sponge (O, Shift+O cycles) | ✅ | Dodge/Burn: shadows, midtones or highlights, by Exposure; Sponge saturates or desaturates. One stroke moves pixels at most the set amount toward the effect (overlap within a stroke doesn't stack); stroke again to build up. Verified: midtones dodge 50% takes 128 → 191, burn → 64. |
+| Blur, Sharpen, Smudge (R, Shift+R cycles) | ✅ | Blur and Sharpen paint a blurred / unsharp-masked copy of the layer through the brush; Smudge carries colour along the drag (Strength = how far). Verified on edges with real mouse strokes. Pixels only (not masks). |
+| History Brush (Y) | ✅ | Paints a layer back toward its pixels in a history state: the oldest kept by default, or the state whose brush icon you click in the History panel. Refuses (with a reason) when the layer didn't exist then or the canvas size changed. |
+| Tool groups in the rail | ✅ | Lasso, focus and toning tools share a slot showing the one in use; right-click or press-and-hold opens the group; the key picks the group, Shift+key cycles it (all rebindable). |
 
 ### Image commands
 | Feature | Status | Notes |
@@ -111,7 +117,8 @@ Suites: 58 unit (`npm test`) · 65 end-to-end (`npm run e2e`), all passing.
 | Image Size (resample), Canvas Size (anchor) | ✅ | |
 | Rotate 90° / 180°, Flip Horizontal / Vertical | ✅ | Pixel mapping verified. |
 | Levels (Ctrl+L) and Curves (Ctrl+M) | ✅ | Destructive (dialog with histogram and live preview) and as adjustment layers (edited in Properties). Curves: RGB plus per-channel, monotone interpolation (never overshoots), click to add points, drag off to remove. Run as 256-entry lookup tables on the GPU (WebGL2) with a CPU fallback; values verified (e.g. gamma 2 on 128 → 181). |
-| Sharpen, noise, other filters | 📋 | |
+| Unsharp Mask, High Pass, Add Noise, Motion Blur | ✅ | GPU (WebGL2) filters with live preview, 16-bit and P3 aware. Unsharp: amount, radius, threshold. High Pass on 50% grey (verified exact on flat areas). Noise: uniform/Gaussian, monochromatic, repeatable. Motion blur: angle and distance (up to 320 px). Without WebGL2 they leave pixels unchanged. Pixels past the layer edge count as transparent. |
+| Other filters (Liquify, Lens Correction, Camera Raw filter, …) | 📋 | |
 | Undo / redo with History panel (50 steps per document) | ✅ | Click a step to jump; failed edits never enter history. |
 
 ## Planned phases
@@ -122,5 +129,5 @@ Suites: 58 unit (`npm test`) · 65 end-to-end (`npm run e2e`), all passing.
 | 3 ✅ | Colour management: 16-bit/float pipeline, ICC profiles, soft-proofing |
 | 4 ✅ | PSD import/export, TIFF, camera RAW (RAW 🟡: verified on synthetic DNG only) |
 | 5 🟡 | Monorepo with Cadence: shared `@cadence/ui` and `@cadence/core` packages exist as npm workspaces and Cadence+ is built from them. Cadence itself has not been moved in yet (its repository was under active development in another session); the migration steps are in `docs/MONOREPO.md`. |
-| 6 | Retouching tools and filters: dodge/burn, sponge, smudge, blur/sharpen tools, history brush, polygonal lasso, quick mask, Color Range, Unsharp Mask, noise, motion blur, high pass |
+| 6 ✅ | Retouching tools and filters: dodge/burn, sponge, smudge, blur/sharpen tools, history brush, polygonal lasso, quick mask, Color Range, Unsharp Mask, noise, motion blur, high pass |
 | 7 | Layer styles (drop shadow, stroke, glows, colour overlay), multi-layer selection, export presets (scale, format batches) |

@@ -7,6 +7,7 @@
 import { scaleFilter, type PixelOp } from '@core/adjustments'
 import { applyLutToPixels } from '@core/lut'
 import { pipelineFormat } from './format'
+import { drawShaderOp } from './shaders'
 import type { Ctx2D } from './tiles'
 
 type Source = OffscreenCanvas | HTMLCanvasElement
@@ -153,7 +154,8 @@ export function drawWithOp(ctx: Ctx2D, src: Source, op: PixelOp, scale = 1): voi
     ctx.filter = scaleFilter(op, scale)
     ctx.drawImage(src, 0, 0)
     ctx.restore()
-  } else drawThroughLut(ctx, src, op)
+  } else if (op instanceof Uint8Array) drawThroughLut(ctx, src, op)
+  else drawShaderOp(ctx, src, op, scale)
 }
 
 // ---------------------------------------------------------------------------

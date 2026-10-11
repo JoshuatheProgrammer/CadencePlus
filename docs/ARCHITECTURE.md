@@ -28,6 +28,8 @@ src/core/            Pure TypeScript, no DOM. Unit-tested (tests/core.test.ts).
   view.ts              Zoom steps, fit/fill, screen ↔ document maths
   icc.ts, png.ts       ICC profile parsing and conversion; own PNG decoder (16-bit)
   format.ts            The .cadenceimg container
+  filters.ts           Shader filter ops as plain data
+  color-range.ts       Select → Color Range selection functions
 src/renderer/src/engine/
   tiles.ts             Immutable tile store (ImageBitmap), slicing, GC
   render.ts            The compositor (viewport, thumbnails, navigator, export)
@@ -37,6 +39,8 @@ src/renderer/src/engine/
   selection.ts         Selection → mask, bounds, marching-ants edges
   io.ts                Decode, .cadenceimg save/load, export
   formats.ts           PSD (ag-psd), TIFF (UTIF + own writer), camera RAW (libraw-wasm)
+  shaders.ts           GPU filters (WebGL2): Unsharp Mask, High Pass, Add Noise, Motion Blur, Dodge/Burn/Sponge
+  retouch.ts           Retouching brushes (processed copy painted through coverage), Smudge, History Brush source
 src/renderer/src/state/  Zustand store, edit()/history actions, commands + keymap, tools
 src/renderer/src/ui/     App frame, canvas (viewport, rulers, overlay, tool handlers), panels, dialogs;
                          theme.css holds only image-editor surfaces on top of @cadence/ui/base.css

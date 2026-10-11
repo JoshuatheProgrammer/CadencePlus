@@ -130,6 +130,9 @@ export function runGc(): number {
       collectMaskIds(doc.selection, masks)
     }
   }
+  // The History Brush source can outlive its history step.
+  const hs = get().historySource
+  if (hs && get().docs.some((d) => d.id === hs.docId)) collectTileIds(hs.state, tiles)
   return collectGarbage(tiles, masks)
 }
 
@@ -350,7 +353,7 @@ export function titleFor(ds: DocState | null): string {
   const doc = ds.history.present
   const layer = doc.layers.find((l) => l.id === doc.activeLayerId)
   const bits = docColor(doc).depth
-  const part = doc.target === 'mask' && layer?.mask ? `${layer.name}, Layer Mask/${bits}` : `${layer?.name ?? '—'}, RGB/${bits}`
+  const part = doc.quickMask ? `Quick Mask/8` : doc.target === 'mask' && layer?.mask ? `${layer.name}, Layer Mask/${bits}` : `${layer?.name ?? '—'}, RGB/${bits}`
   const s = get()
   const proof = s.proofOn ? `/${PROOF_LABELS[s.proofSetup]}` : ''
   return `${displayName(ds)}${isDirty(ds) ? ' •' : ''} @ ${formatZoom(ds.view?.zoom ?? 1)} (${part}${proof})`

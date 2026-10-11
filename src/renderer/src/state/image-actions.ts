@@ -5,7 +5,7 @@
 import { ADJUSTMENTS, defaultAdjustment, type Adjustment, type AdjustmentKind, type PixelOp } from '@core/adjustments'
 import * as E from '@core/edit'
 import { activeLayer, createDocument, docColor, TILE, type DocColor, type ImageDocument, type Rect, type TileMap } from '@core/model'
-import { withFormat } from '../engine/format'
+import { ctx2d, pixelCanvas, withFormat } from '../engine/format'
 import { descendants, effectivelyVisible } from '@core/tree'
 import * as S from '@core/selection'
 import type { BrushOptions } from '../engine/brush'
@@ -16,6 +16,7 @@ import { maskFromCanvas, selectionBounds } from '../engine/selection'
 import { rasterToCanvas, releasePool, solidTiles, tilesFromCanvas } from '../engine/tiles'
 import { addDocument, attempt, edit, holdingTiles, silent } from './doc-actions'
 import { activeDoc, get, set, toast } from './store'
+import { isBrushTool } from './tools'
 
 function doc(): ImageDocument | null {
   return activeDoc()
@@ -265,6 +266,31 @@ export function commitPixels(px: OffscreenCanvas, bounds: Rect, opacity: number,
   edit(label, (x) => E.setSurfaceTiles(x, t.layer.id, t.kind, tiles))
 }
 
+/**
+ * Retouching commit: inside `bounds`, the target becomes
+ * layer × (1 − c·opacity) + px × c·opacity, where c is the coverage's alpha.
+ */
+export function commitMix(px: OffscreenCanvas, coverage: OffscreenCanvas, bounds: Rect, opacity: number, label: string): void {
+  const d = doc()
+  const t = d && paintTarget()
+  if (!d || !t || t.kind !== 'pixels') return
+  const out = pixelCanvas(d.width, d.height)
+  const g = ctx2d(out)
+  g.drawImage(layerCanvas(d, t.layer, 'mix.src'), 0, 0)
+  const add = pixelCanvas(d.width, d.height)
+  const ag = ctx2d(add)
+  ag.drawImage(coverage, 0, 0)
+  ag.globalCompositeOperation = 'source-in'
+  ag.drawImage(px, 0, 0)
+  g.globalAlpha = opacity
+  g.globalCompositeOperation = 'destination-out'
+  g.drawImage(coverage, 0, 0)
+  g.globalCompositeOperation = 'lighter'
+  g.drawImage(add, 0, 0)
+  const tiles = applyToLayer(d, t.surface, canvasSource(out), bounds, 'replace')
+  edit(label, (x) => E.setSurfaceTiles(x, t.layer.id, t.kind, tiles))
+}
+
 function fillArea(source: Source, mode: 'over' | 'erase', opacity: number, label: string): void {
   const d = doc()
   const t = d && paintTarget(mode === 'erase' ? 'clear it' : 'fill it')
@@ -350,6 +376,7 @@ export function invertTarget(): void {
 }
 
 export function transformImage(t: DocTransform, label: string): void {
+  if (doc()?.quickMask) return void toast('Leave Quick Mask (Q) before changing the canvas.', 'warn')
   const d = doc()
   if (!d) return
   const r = attempt(() => transformLayers(d, t))
@@ -392,6 +419,30 @@ export function applyLayerMask(id = doc()?.activeLayerId): void {
 
 export function setMaskEnabled(id: string, enabled: boolean): void {
   edit(enabled ? 'Enable Layer Mask' : 'Disable Layer Mask', (x) => E.setMaskEnabled(x, id, enabled))
+}
+
+/**
+ * Q: enters Quick Mask (the selection becomes a mask you paint: black masks,
+ * white unmasks) or leaves it (the unmasked area becomes the selection).
+ */
+export function toggleQuickMask(): void {
+  const d = doc()
+  if (!d) return
+  if (!d.quickMask) {
+    const tiles = d.selection ? maskTilesFromSelection(d, false) : {}
+    edit('Quick Mask', (x) => {
+      x.quickMask = { x: 0, y: 0, tiles }
+      x.selection = null
+    })
+    return
+  }
+  const qm = d.quickMask
+  const empty = !Object.keys(qm.tiles).length
+  const maskId = empty ? null : maskFromCanvas(maskVisibility(d, qm))
+  edit('Exit Quick Mask', (x) => {
+    delete x.quickMask
+    x.selection = maskId ? { steps: [{ op: 'add', shape: { kind: 'mask', maskId, x: 0, y: 0 } }] } : null
+  })
 }
 
 /** Loads the visible part of a layer's mask as the selection. */
@@ -485,7 +536,7 @@ export async function paste(): Promise<void> {
 /** [ and ]: brush size steps like Photoshop's. */
 export function stepBrushSize(dir: 1 | -1): void {
   const s = get()
-  const key = s.tool === 'eraser' || s.tool === 'clone' || s.tool === 'heal' ? s.tool : 'brush'
+  const key = isBrushTool(s.tool) ? s.tool : 'brush'
   const cur = s.options[key].size
   const step = cur < 10 ? 1 : cur < 50 ? 5 : cur < 100 ? 10 : cur < 300 ? 25 : 50
   const size = Math.max(1, Math.min(2500, cur + dir * step))
@@ -494,7 +545,7 @@ export function stepBrushSize(dir: 1 | -1): void {
 
 export function stepHardness(dir: 1 | -1): void {
   const s = get()
-  const key = s.tool === 'eraser' || s.tool === 'clone' || s.tool === 'heal' ? s.tool : 'brush'
+  const key = isBrushTool(s.tool) ? s.tool : 'brush'
   const hardness = Math.max(0, Math.min(100, s.options[key].hardness + dir * 25))
   set({ options: { ...s.options, [key]: { ...s.options[key], hardness } } })
 }

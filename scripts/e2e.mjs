@@ -1176,6 +1176,276 @@ await check('camera RAW (DNG) develops with LibRaw into 16-bit Display P3', asyn
   return `18% grey → ${grey[0].toFixed(3)}, linear red 0.5 → ${red.slice(0, 3).map((v) => v.toFixed(3))}`
 })
 
+// ---------------------------------------------------------------------------
+// Phase 6: retouching tools and filters
+// ---------------------------------------------------------------------------
+
+const grey = async (w, h, v) => {
+  await closeAllClean()
+  await newDoc(w, h)
+  const hex = '#' + v.toString(16).padStart(2, '0').repeat(3)
+  await A('fillWith', hex)
+}
+const setOpt = (tool, patch) => ev(([tool, patch]) => window.__cadencePlus.set((s) => ({ options: { ...s.options, [tool]: { ...s.options[tool], ...patch } } })), [tool, patch])
+const lastLabel = async () => ev(() => {
+  const s = window.__cadencePlus.get()
+  return s.docs.find((d) => d.id === s.activeId).history.presentLabel
+})
+
+await check('Unsharp Mask (Filter → Sharpen) adds edge contrast; flat areas unchanged', async () => {
+  await grey(64, 64, 100)
+  await selectRect(32, 0, 32, 64)
+  await A('fillWith', '#969696')
+  await A('deselect')
+  await ev(() => window.__cadencePlus.run('filter.unsharp'))
+  await win.waitForSelector('.modal >> text=Unsharp Mask')
+  await settle(200)
+  await win.keyboard.press('Enter')
+  await settle(200)
+  expect((await lastLabel()) === 'Unsharp Mask', `label ${await lastLabel()}`)
+  const l = await px(31, 32)
+  const r = await px(32, 32)
+  const far = await px(8, 32)
+  expect(l[0] < 100 && r[0] > 150 && near(far, [100, 100, 100, 255], 1), `edge ${l} | ${r}, far ${far}`)
+  return `edge 100|150 → ${l[0]}|${r[0]}`
+})
+
+await check('High Pass, Add Noise and Motion Blur (GPU filters)', async () => {
+  await grey(64, 64, 100)
+  await A('applyFilter', { shader: 'highPass', params: { radius: 4 } }, 'High Pass')
+  const hp = await px(32, 32)
+  expect(near(hp, [128, 128, 128, 255], 1), `high pass on flat grey ${hp}`)
+  await grey(64, 64, 128)
+  await A('applyFilter', { shader: 'noise', params: { amount: 0.2, gaussian: 0, mono: 1, seed: 7 } }, 'Add Noise')
+  const row = await Promise.all(Array.from({ length: 32 }, (_, i) => px(i, 10)))
+  const vals = new Set(row.map((p) => p[0]))
+  const mean = row.reduce((a, p) => a + p[0], 0) / row.length
+  expect(vals.size > 12 && Math.abs(mean - 128) < 12 && row.every((p) => p[0] === p[1] && p[1] === p[2]), `noise ${vals.size} levels, mean ${mean}`)
+  await closeAllClean()
+  await newDoc(64, 64, 'black')
+  await setFg('#ffffff')
+  await selectRect(32, 0, 1, 64)
+  await A('fillWith', '#ffffff')
+  await A('deselect')
+  await A('applyFilter', { shader: 'motionBlur', params: { angle: 0, dist: 10 } }, 'Motion Blur')
+  const side = await px(36, 32)
+  const line = await px(32, 32)
+  const off = await px(45, 32)
+  expect(side[0] > 10 && line[0] < 200 && off[0] < 3, `motion blur: line ${line} side ${side} off ${off}`)
+  return `noise ${vals.size} levels (mean ${mean.toFixed(1)}); motion blur line ${line[0]} → side ${side[0]}`
+})
+
+await check('Dodge and Burn lighten/darken by mouse; Sponge desaturates', async () => {
+  await grey(200, 100, 128)
+  await win.keyboard.press('o')
+  expect((await ev(() => window.__cadencePlus.get().tool)) === 'dodge', 'O did not pick Dodge')
+  await setOpt('dodge', { size: 30, hardness: 100, strength: 50, range: 'midtones' })
+  await drag([[20, 30], [180, 30]])
+  const d = await px(100, 30)
+  const untouched = await px(100, 80)
+  expect(d[0] > 150 && d[0] < 255 && near(untouched, [128, 128, 128, 255], 0), `dodge ${d} / ${untouched}`)
+  expect((await lastLabel()) === 'Dodge', `label ${await lastLabel()}`)
+  await win.keyboard.press('Shift+O')
+  expect((await ev(() => window.__cadencePlus.get().tool)) === 'burn', 'Shift+O did not cycle to Burn')
+  await setOpt('burn', { size: 30, hardness: 100, strength: 50, range: 'midtones' })
+  await drag([[20, 70], [180, 70]])
+  const b = await px(100, 70)
+  expect(b[0] < 110 && b[0] > 0, `burn ${b}`)
+  // Sponge (desaturate) on a saturated red.
+  await closeAllClean()
+  await newDoc(200, 100)
+  await A('fillWith', '#c83232')
+  await win.keyboard.press('Shift+O')
+  expect((await ev(() => window.__cadencePlus.get().tool)) === 'sponge', 'Shift+O did not cycle to Sponge')
+  await setOpt('sponge', { size: 30, hardness: 100, strength: 80, desaturate: true })
+  await drag([[20, 50], [180, 50]])
+  const sp = await px(100, 50)
+  expect(sp[0] - sp[1] < 100 && sp[0] - sp[1] > 0, `sponge ${sp} (was 200,50,50)`)
+  return `dodge 128 → ${d[0]}, burn 128 → ${b[0]}, sponge 200,50,50 → ${sp.slice(0, 3)}`
+})
+
+await check('Blur and Sharpen tools soften / crisp an edge; Smudge drags colour', async () => {
+  await grey(200, 100, 0)
+  await selectRect(100, 0, 100, 100)
+  await A('fillWith', '#ffffff')
+  await A('deselect')
+  await win.keyboard.press('r')
+  expect((await ev(() => window.__cadencePlus.get().tool)) === 'blur', 'R did not pick Blur')
+  await setOpt('blur', { size: 40, hardness: 100, strength: 100 })
+  await drag([[100, 20], [100, 40]])
+  const e1 = await px(98, 30)
+  const e2 = await px(101, 30)
+  const keep = await px(98, 80)
+  expect(e1[0] > 20 && e2[0] < 235 && keep[0] === 0, `blur ${e1} ${e2} keep ${keep}`)
+  // Sharpen on a soft ramp increases contrast across it.
+  await closeAllClean()
+  await newDoc(200, 100)
+  await ev(() => {
+    const A = window.__cadencePlus.A
+    A.fillWith('#404040')
+  })
+  await selectRect(100, 0, 100, 100)
+  await A('fillWith', '#c0c0c0')
+  await A('deselect')
+  await A('applyFilter', 'blur(3px)', 'Gaussian Blur')
+  const before = [await px(97, 50), await px(103, 50)]
+  await win.keyboard.press('Shift+R')
+  expect((await ev(() => window.__cadencePlus.get().tool)) === 'sharpen', 'Shift+R did not cycle to Sharpen')
+  await setOpt('sharpen', { size: 40, hardness: 100, strength: 100 })
+  await drag([[100, 40], [100, 60]])
+  const after = [await px(97, 50), await px(103, 50)]
+  expect(after[0][0] < before[0][0] && after[1][0] > before[1][0], `sharpen ${before.map((p) => p[0])} → ${after.map((p) => p[0])}`)
+  // Smudge: drag red into blue.
+  await closeAllClean()
+  await newDoc(200, 100)
+  await A('fillWith', '#0000ff')
+  await selectRect(0, 0, 100, 100)
+  await A('fillWith', '#ff0000')
+  await A('deselect')
+  await win.keyboard.press('Shift+R')
+  expect((await ev(() => window.__cadencePlus.get().tool)) === 'smudge', 'Shift+R did not cycle to Smudge')
+  await setOpt('smudge', { size: 20, hardness: 100, strength: 80 })
+  await drag([[80, 50], [130, 50]], 20)
+  const sm = await px(115, 50)
+  const blue = await px(115, 90)
+  expect(sm[0] > 60 && near(blue, [0, 0, 255, 255], 0), `smudge ${sm} / ${blue}`)
+  expect((await lastLabel()) === 'Smudge', `label ${await lastLabel()}`)
+  return `blur edge ${e1[0]}|${e2[0]}; sharpen ${before.map((p) => p[0])} → ${after.map((p) => p[0])}; smudged ${sm.slice(0, 3)}`
+})
+
+await check('History Brush paints back the opening state (or a state chosen in the History panel)', async () => {
+  await closeAllClean()
+  await newDoc(200, 100)
+  await setFg('#000000')
+  await win.keyboard.press('b')
+  await setOpt('brush', { size: 20, hardness: 100, opacity: 100, flow: 100 })
+  await drag([[20, 50], [180, 50]])
+  expect(near(await px(100, 50), [0, 0, 0, 255]), 'brush did not paint')
+  await win.keyboard.press('y')
+  await setOpt('historyBrush', { size: 30, hardness: 100, opacity: 100, flow: 100 })
+  await drag([[90, 50], [110, 50]])
+  const back = await px(100, 50)
+  const still = await px(40, 50)
+  expect(near(back, [255, 255, 255, 255], 1) && near(still, [0, 0, 0, 255], 1), `history brush ${back} / ${still}`)
+  // Choose the "Brush" state as the source via the History panel: painting it back restores black.
+  await ev(() => window.__cadencePlus.run('window.history')).catch(() => {})
+  const rows = win.locator('.history-row')
+  if ((await rows.count()) >= 2) {
+    await rows.nth(1).hover()
+    await rows.nth(1).locator('.history-src').click()
+    await drag([[95, 50], [105, 50]])
+    const black = await px(100, 50)
+    expect(near(black, [0, 0, 0, 255], 1), `from chosen state ${black}`)
+  }
+  return `restored ${back.slice(0, 3)}`
+})
+
+await check('Polygonal Lasso: click corners, click the first to close; Backspace and Esc', async () => {
+  await closeAllClean()
+  await newDoc(200, 100)
+  await win.keyboard.press('l')
+  await win.keyboard.press('Shift+L')
+  expect((await ev(() => window.__cadencePlus.get().tool)) === 'polyLasso', 'Shift+L did not pick Polygonal Lasso')
+  const click = async (x, y) => {
+    const c = await client(x, y)
+    await win.mouse.click(c.x, c.y)
+    await settle(60)
+  }
+  await click(20, 20)
+  await click(100, 20)
+  await click(150, 70) // removed by Backspace
+  await win.keyboard.press('Backspace')
+  await click(100, 80)
+  await click(20, 80)
+  await click(20, 20)
+  const sel = (await doc()).selection
+  expect(!!sel, 'no selection')
+  await A('fillWith', '#ff0000')
+  const inside = await px(50, 50)
+  const cut = await px(140, 60)
+  expect(near(inside, [255, 0, 0, 255]) && near(cut, [255, 255, 255, 255]), `inside ${inside} / removed corner ${cut}`)
+  await A('deselect')
+  await click(10, 10)
+  await click(60, 10)
+  await win.keyboard.press('Escape')
+  await settle()
+  expect(!(await doc()).selection, 'Esc did not cancel')
+  return 'square selection, Backspace dropped a corner, Esc cancelled'
+})
+
+await check('Quick Mask: Q turns the selection into a red film; painting edits it; Q again makes the selection', async () => {
+  await closeAllClean()
+  await newDoc(200, 100)
+  await selectRect(0, 0, 100, 100)
+  await win.keyboard.press('q')
+  await settle(200)
+  let d = await doc()
+  expect(!!d.quickMask && !d.selection, 'not in quick mask')
+  const red = await ev(([x, y]) => window.__cadencePlus.screenPixel(x, y), [150, 50])
+  const clear = await ev(([x, y]) => window.__cadencePlus.screenPixel(x, y), [50, 50])
+  expect(red[0] > 200 && red[1] < 160 && near(clear, [255, 255, 255, 255], 2), `overlay ${red} / ${clear}`)
+  expect(near(await px(150, 50), [255, 255, 255, 255], 0), 'the film reached the pixels')
+  // White paint unmasks a strip on the right; black paint masks a strip on the left.
+  await win.keyboard.press('b')
+  await setOpt('brush', { size: 10, hardness: 100, opacity: 100, flow: 100 })
+  await setFg('#ffffff')
+  await drag([[110, 20], [190, 20]])
+  await setFg('#000000')
+  await drag([[10, 80], [90, 80]])
+  expect(near(await px(150, 20), [255, 255, 255, 255], 0), 'painting changed pixels')
+  await win.keyboard.press('q')
+  await settle(200)
+  d = await doc()
+  expect(!d.quickMask && !!d.selection, 'no selection after leaving')
+  await A('fillWith', '#ff0000')
+  const got = { left: await px(50, 50), strip: await px(150, 20), right: await px(150, 60), black: await px(50, 80) }
+  expect(near(got.left, [255, 0, 0, 255]) && near(got.strip, [255, 0, 0, 255]) && near(got.right, [255, 255, 255, 255]) && near(got.black, [255, 255, 255, 255]), JSON.stringify(got))
+  return 'selection = original area + white strip − black strip'
+})
+
+await check('Color Range: sampled colour and hue families select by colour', async () => {
+  await closeAllClean()
+  await newDoc(120, 60)
+  await selectRect(0, 0, 40, 60)
+  await A('fillWith', '#d02020')
+  await selectRect(40, 0, 40, 60)
+  await A('fillWith', '#2040d0')
+  await A('deselect')
+  await setFg('#d02020')
+  await ev(() => window.__cadencePlus.run('select.colorRange'))
+  await win.waitForSelector('.modal >> text=Color Range')
+  await settle(200)
+  await win.keyboard.press('Enter')
+  await settle(200)
+  await A('fillWith', '#00ff00')
+  const r = { red: await px(20, 30), blue: await px(60, 30), white: await px(100, 30) }
+  expect(near(r.red, [0, 255, 0, 255]) && near(r.blue, [32, 64, 208, 255], 2) && near(r.white, [255, 255, 255, 255]), `sampled ${JSON.stringify(r)}`)
+  await ev(() => window.__cadencePlus.run('edit.undo'))
+  await ev(() => window.__cadencePlus.run('select.colorRange'))
+  await win.waitForSelector('.modal >> text=Color Range')
+  await win.locator('.modal select').first().selectOption('blues')
+  await settle(200)
+  await win.keyboard.press('Enter')
+  await settle(200)
+  await A('fillWith', '#00ff00')
+  const b = { red: await px(20, 30), blue: await px(60, 30) }
+  expect(near(b.blue, [0, 255, 0, 255]) && near(b.red, [208, 32, 32, 255], 2), `blues ${JSON.stringify(b)}`)
+  return 'red picked by sample, blue by the Blues family'
+})
+
+await check('tool groups: rail shows one slot per group; right-click lists the group', async () => {
+  await win.keyboard.press('o')
+  const slot = win.locator('.tool-btn.active')
+  await slot.click({ button: 'right' })
+  await win.waitForSelector('.menu-pop')
+  const items = await win.locator('.menu-pop .menu-item .label').allTextContents()
+  expect(items.join() === 'Dodge,Burn,Sponge', `flyout ${items}`)
+  await win.locator('.menu-pop .menu-item', { hasText: 'Burn' }).click()
+  expect((await ev(() => window.__cadencePlus.get().tool)) === 'burn', 'flyout did not pick Burn')
+  const slots = await win.locator('.toolrail .tool-btn').count()
+  return `${slots} rail slots for ${await ev(() => window.__cadencePlus.COMMANDS.filter((c) => c.id.startsWith('tool.') && !/size|softer|harder|opacity/.test(c.id)).length)} tools`
+})
+
 await check('Ctrl+R toggles rulers without reloading the window', async () => {
   const n = await ev(() => window.__cadencePlus.get().docs.length)
   await win.keyboard.press('Control+r')

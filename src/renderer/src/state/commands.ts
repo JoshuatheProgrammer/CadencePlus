@@ -6,7 +6,7 @@ import { resetWorkspace, togglePanel } from '../ui/workspace'
 import * as D from './doc-actions'
 import * as A from './image-actions'
 import { activeDoc, activeDocState, get, set, setToolOption, toast, type PanelId, type ToolId } from './store'
-import { TOOL_LIST } from './tools'
+import { TOOL_GROUPS, TOOL_LIST } from './tools'
 import { PROOF_LABELS } from '../engine/ops'
 import { docColor, type DocColor } from '@core/model'
 import * as T from './transform-actions'
@@ -49,7 +49,7 @@ function setTool(id: ToolId): void {
   if (!t) return
   if (t.unavailable) return void toast(t.unavailable, 'info')
   if (get().textEdit) commitText()
-  set({ tool: id })
+  set((s) => ({ tool: id, toolPick: t.group ? { ...s.toolPick, [t.group]: id } : s.toolPick }))
 }
 
 export const COMMANDS: Command[] = [
@@ -142,7 +142,13 @@ export const COMMANDS: Command[] = [
   { id: 'select.feather', label: 'Feather…', keys: ['Shift+F6'], run: () => set({ dialog: { kind: 'feather' } }), enabled: hasSel },
 
   // Filter
+  { id: 'select.quickMask', label: 'Edit in Quick Mask Mode', keys: ['Q'], run: A.toggleQuickMask, enabled: hasDoc },
+  { id: 'select.colorRange', label: 'Color Range…', run: () => set({ dialog: { kind: 'colorRange' } }), enabled: hasDoc },
   { id: 'filter.blur', label: 'Gaussian Blur…', run: () => set({ dialog: { kind: 'blur' } }), enabled: hasDoc },
+  { id: 'filter.motionBlur', label: 'Motion Blur…', run: () => set({ dialog: { kind: 'filter', filter: 'motionBlur' } }), enabled: hasDoc },
+  { id: 'filter.unsharp', label: 'Unsharp Mask…', run: () => set({ dialog: { kind: 'filter', filter: 'unsharp' } }), enabled: hasDoc },
+  { id: 'filter.noise', label: 'Add Noise…', run: () => set({ dialog: { kind: 'filter', filter: 'noise' } }), enabled: hasDoc },
+  { id: 'filter.highPass', label: 'High Pass…', run: () => set({ dialog: { kind: 'filter', filter: 'highPass' } }), enabled: hasDoc },
 
   // View
   { id: 'view.zoomIn', label: 'Zoom In', keys: ['Ctrl+=', 'Ctrl+Shift+='], run: D.zoomIn, enabled: hasDoc },
@@ -166,7 +172,21 @@ export const COMMANDS: Command[] = [
   { id: 'help.about', label: 'About Cadence+', run: () => set({ dialog: { kind: 'about' } }) },
 
   // Tools & colours
-  ...TOOL_LIST.filter((t) => !t.unavailable).map((t) => ({ id: `tool.${t.id}`, label: `${t.label} Tool`, keys: [t.key], run: () => setTool(t.id) })),
+  ...TOOL_LIST.filter((t) => !t.unavailable).map((t) => ({ id: `tool.${t.id}`, label: `${t.label} Tool`, keys: t.group ? [] : [t.key], run: () => setTool(t.id) })),
+  // Grouped tools share a key: it picks the group's last-used tool; Shift+key cycles the group.
+  ...TOOL_GROUPS.flatMap(({ group, members }) => [
+    { id: `tools.${group}`, label: `${members.map((m) => m.label).join(' / ')} Tools`, keys: [members[0].key], run: () => setTool(get().toolPick[group] ?? members[0].id) },
+    {
+      id: `tools.${group}.next`,
+      label: `Next of ${members.map((m) => m.label).join(' / ')}`,
+      keys: [`Shift+${members[0].key}`],
+      run: () => {
+        const cur = members.findIndex((m) => m.id === get().tool)
+        const from = cur >= 0 ? cur : members.findIndex((m) => m.id === (get().toolPick[group] ?? members[0].id))
+        setTool(members[(from + 1) % members.length].id)
+      }
+    }
+  ]),
   { id: 'tool.sizeDown', label: 'Decrease Brush Size', keys: ['['], run: () => A.stepBrushSize(-1) },
   { id: 'tool.sizeUp', label: 'Increase Brush Size', keys: [']'], run: () => A.stepBrushSize(1) },
   { id: 'tool.softer', label: 'Decrease Brush Hardness', keys: ['Shift+['], run: () => A.stepHardness(-1) },
@@ -251,7 +271,8 @@ function nudge(dx: number, dy: number): void {
 function setOpacityKey(k: string): void {
   const t = get().tool
   const v = k === '0' ? 100 : Number(k) * 10
-  if (t === 'brush' || t === 'eraser' || t === 'clone' || t === 'heal') setToolOption(t, { opacity: v })
+  if (t === 'brush' || t === 'eraser' || t === 'clone' || t === 'heal' || t === 'historyBrush') setToolOption(t, { opacity: v })
+  else if (t === 'blur' || t === 'sharpen' || t === 'smudge' || t === 'dodge' || t === 'burn' || t === 'sponge') setToolOption(t, { strength: v })
   else if (t === 'bucket' || t === 'gradient') setToolOption(t, { opacity: v })
 }
 
