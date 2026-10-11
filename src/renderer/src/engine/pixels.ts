@@ -377,7 +377,9 @@ export function filterLayer(doc: ImageDocument, content: TileSurface, op: PixelO
   if (!full) return content.tiles
   const out = poolCanvas('filter.out', full.rect.w, full.rect.h)
   const g = ctx2d(out)
-  drawWithOp(g, full.canvas, op)
+  // The canvas area within this surface: filters repeat its edge pixels outward.
+  const edges = intersectRect({ x: -full.rect.x, y: -full.rect.y, w: doc.width, h: doc.height }, { x: 0, y: 0, w: full.rect.w, h: full.rect.h })
+  drawWithOp(g, full.canvas, op, 1, edges ?? undefined)
   return applyToLayer(doc, content, canvasSource(out, full.rect.x, full.rect.y), full.rect, 'replace')
 }
 

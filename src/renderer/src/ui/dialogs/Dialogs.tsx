@@ -227,7 +227,7 @@ function BlurDialog() {
     >
       <div className="adjust-grid">
         <SliderField label="Radius" value={radius} min={0.1} max={250} step={0.1} unit="px" width={200} onChange={setRadius} />
-        <span className="note">Pixels beyond the layer edge count as transparent, so edges soften toward transparency.</span>
+        <span className="note">At the canvas edge the image continues (edge pixels repeat), so borders stay solid. Transparent areas of the layer blur into their surroundings.</span>
       </div>
     </Modal>
   )

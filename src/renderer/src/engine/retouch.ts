@@ -46,7 +46,7 @@ function opFor(s: RetouchSettings): ShaderOp | string {
 export function retouchSource(doc: ImageDocument, layer: Layer, s: RetouchSettings): OffscreenCanvas {
   const src = layerCanvas(doc, layer, 'retouch.src')
   const out = pixelCanvas(doc.width, doc.height)
-  drawWithOp(ctx2d(out), src, opFor(s))
+  drawWithOp(ctx2d(out), src, opFor(s), 1, { x: 0, y: 0, w: doc.width, h: doc.height })
   return out
 }
 

@@ -288,6 +288,12 @@ await check('Gaussian blur softens an edge', async () => {
   const far = await px(5, 30)
   expect(edge[0] > 60 && edge[0] < 200, `edge ${edge}`)
   expect(far[0] < 5, `far ${far}`)
+  // Edge pixels repeat past the canvas: corners stay opaque and black, not faded.
+  const corner = await px(0, 0)
+  const top = await px(10, 0)
+  expect(near(corner, [0, 0, 0, 255], 1) && near(top, [0, 0, 0, 255], 1), `canvas edge after blur: corner ${corner}, top ${top}`)
+  await A('applyFilter', { shader: 'motionBlur', params: { angle: 0, dist: 20 } }, 'Motion Blur')
+  expect((await px(0, 30))[3] === 255 && (await px(59, 30))[3] === 255, `motion blur faded the edge: ${await px(0, 30)} ${await px(59, 30)}`)
 })
 
 await check('crop moves content and resizes the canvas', async () => {

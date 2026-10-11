@@ -345,7 +345,7 @@ function renderLayers(target: OffscreenCanvas, ctx: Ctx2D, doc: ImageDocument, l
     if (fp) {
       const filtered = poolCanvas('render.filtered', W, H)
       const fg = ctx2d(filtered)
-      drawWithOp(fg, tmp, fp.op, o.xf.scale)
+      drawWithOp(fg, tmp, fp.op, o.xf.scale, r)
       if (doc.selection) {
         drawSelectionMask(fg, doc, o.xf)
         // tmp = tmp × (1 − mask) + filtered × mask

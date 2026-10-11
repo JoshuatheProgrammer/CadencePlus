@@ -116,11 +116,11 @@ Suites: 58 unit (`npm test`) · 65 end-to-end (`npm run e2e`), all passing.
 | Feature | Status | Notes |
 |---|---|---|
 | Adjustments (destructive) with live preview | ✅ | Brightness/Contrast, Hue/Saturation, Black & White, Sepia, Invert, Desaturate. They use the standard Filter Effects formulas, not Photoshop's exact algorithms (e.g. Brightness is multiplicative). |
-| Gaussian blur with live preview | 🟡 | Pixels past the layer edge count as transparent, so edges soften toward transparency. |
+| Gaussian blur with live preview | ✅ | Like Photoshop, edge pixels repeat past the canvas edge, so borders stay solid (verified: corners keep full opacity and colour); transparent areas inside a layer blur into their surroundings. |
 | Image Size (resample), Canvas Size (anchor) | ✅ | |
 | Rotate 90° / 180°, Flip Horizontal / Vertical | ✅ | Pixel mapping verified. |
 | Levels (Ctrl+L) and Curves (Ctrl+M) | ✅ | Destructive (dialog with histogram and live preview) and as adjustment layers (edited in Properties). Curves: RGB plus per-channel, monotone interpolation (never overshoots), click to add points, drag off to remove. Run as 256-entry lookup tables on the GPU (WebGL2) with a CPU fallback; values verified (e.g. gamma 2 on 128 → 181). |
-| Unsharp Mask, High Pass, Add Noise, Motion Blur | ✅ | GPU (WebGL2) filters with live preview, 16-bit and P3 aware. Unsharp: amount, radius, threshold. High Pass on 50% grey (verified exact on flat areas). Noise: uniform/Gaussian, monochromatic, repeatable. Motion blur: angle and distance (up to 320 px). Without WebGL2 they leave pixels unchanged. Pixels past the layer edge count as transparent. |
+| Unsharp Mask, High Pass, Add Noise, Motion Blur | ✅ | GPU (WebGL2) filters with live preview, 16-bit and P3 aware. Unsharp: amount, radius, threshold. High Pass on 50% grey (verified exact on flat areas). Noise: uniform/Gaussian, monochromatic, repeatable. Motion blur: angle and distance (up to 320 px). Without WebGL2 they leave pixels unchanged. Edge pixels repeat past the canvas edge (as for Gaussian Blur and the Blur/Sharpen tools). |
 | Other filters (Liquify, Lens Correction, Camera Raw filter, …) | 📋 | |
 | Undo / redo with History panel (50 steps per document) | ✅ | Click a step to jump; failed edits never enter history. |
 

@@ -6,7 +6,7 @@
  */
 import { scaleFilter, type PixelOp } from '@core/adjustments'
 import { applyLutToPixels } from '@core/lut'
-import { pipelineFormat } from './format'
+import { ctx2d, pipelineFormat, pixelCanvas } from './format'
 import { drawShaderOp } from './shaders'
 import type { Ctx2D } from './tiles'
 
@@ -147,8 +147,63 @@ export function drawThroughLut(ctx: Ctx2D, src: Source, lut: Uint8Array): void {
   ctx.drawImage(tmp, 0, 0)
 }
 
-/** Draws `src` through a pixel op (filter or LUT) into `ctx`; `scale` adapts blur radii to the target. */
-export function drawWithOp(ctx: Ctx2D, src: Source, op: PixelOp, scale = 1): void {
+/** How far (target pixels) an op reads from its neighbours; 0 for per-pixel ops. */
+export function opReach(op: PixelOp, scale = 1): number {
+  if (typeof op === 'string') {
+    let r = 0
+    for (const m of op.matchAll(/blur\(([\d.]+)px\)/g)) r = Math.max(r, Number(m[1]) * 3)
+    return Math.ceil(r * scale)
+  }
+  if (op instanceof Uint8Array) return 0
+  const p = op.params
+  if (op.shader === 'unsharp' || op.shader === 'highPass') return Math.ceil((p.radius ?? 0) * 3 * scale)
+  if (op.shader === 'motionBlur') return Math.ceil(((p.dist ?? 0) / 2 + 1) * scale)
+  return 0
+}
+
+/**
+ * A copy of `src` padded by `m` on every side, whose pixels beyond `r`
+ * repeat the nearest pixel of `r`'s border (filters then see the image
+ * continue past the canvas edge instead of fading to transparent, as in
+ * Photoshop). Source pixel (x, y) lands at (x + m, y + m).
+ */
+export function extendEdges(src: Source, r0: { x: number; y: number; w: number; h: number }, m: number): OffscreenCanvas {
+  const c = pixelCanvas(src.width + 2 * m, src.height + 2 * m)
+  const g = ctx2d(c)
+  g.drawImage(src, m, m)
+  if (m <= 0 || r0.w <= 0 || r0.h <= 0) return c
+  g.imageSmoothingEnabled = false
+  const r = { x: r0.x + m, y: r0.y + m, w: r0.w, h: r0.h }
+  src = c
+  const { x, y, w, h } = r
+  // Sides: stretch the outermost row/column outward.
+  g.drawImage(src, x, y, w, 1, x, y - m, w, m)
+  g.drawImage(src, x, y + h - 1, w, 1, x, y + h, w, m)
+  g.drawImage(src, x, y, 1, h, x - m, y, m, h)
+  g.drawImage(src, x + w - 1, y, 1, h, x + w, y, m, h)
+  // Corners: the corner pixel.
+  g.drawImage(src, x, y, 1, 1, x - m, y - m, m, m)
+  g.drawImage(src, x + w - 1, y, 1, 1, x + w, y - m, m, m)
+  g.drawImage(src, x, y + h - 1, 1, 1, x - m, y + h, m, m)
+  g.drawImage(src, x + w - 1, y + h - 1, 1, 1, x + w, y + h, m, m)
+  return c
+}
+
+/**
+ * Draws `src` through a pixel op (filter or LUT) into `ctx`; `scale` adapts
+ * blur radii to the target. With `edges` (the canvas area within `src`),
+ * neighbourhood filters see edge pixels repeated beyond it.
+ */
+export function drawWithOp(ctx: Ctx2D, src: Source, op: PixelOp, scale = 1, edges?: { x: number; y: number; w: number; h: number }): void {
+  const reach = edges ? opReach(op, scale) : 0
+  if (reach > 0) {
+    // Filter a padded, edge-extended copy, then place it back.
+    const padded = extendEdges(src, edges!, reach)
+    const out = pixelCanvas(padded.width, padded.height)
+    drawWithOp(ctx2d(out), padded, op, scale)
+    ctx.drawImage(out, -reach, -reach)
+    return
+  }
   if (typeof op === 'string') {
     ctx.save()
     ctx.filter = scaleFilter(op, scale)

@@ -60,7 +60,7 @@ export const FILTERS: Record<FilterKind, FilterSpec> = {
       { id: 'distance', kind: 'slider', label: 'Distance', min: 1, max: 320, unit: 'px', default: 10 }
     ],
     op: (v) => motionBlurOp(n(v, 'angle'), n(v, 'distance')),
-    note: 'Pixels beyond the layer edge count as transparent.'
+    note: 'At the canvas edge the image continues (edge pixels repeat).'
   }
 }
 
