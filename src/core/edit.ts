@@ -306,6 +306,82 @@ export function addGroup(doc: ImageDocument, name?: string): string {
   return insertAboveActive(doc, { ...createLayer(name ?? nextLayerName(doc, 'Group'), { type: 'group', collapsed: false }), blend: 'pass-through' })
 }
 
+// ---------------------------------------------------------------------------
+// Several layers at once
+// ---------------------------------------------------------------------------
+
+/** The selected layers in stack order (bottom → top); at least the active one. */
+export function selectedLayerIds(doc: ImageDocument): string[] {
+  const active = doc.activeLayerId
+  const set = doc.selectedLayers && active && doc.selectedLayers.includes(active) ? new Set(doc.selectedLayers) : new Set(active ? [active] : [])
+  return doc.layers.filter((l) => set.has(l.id)).map((l) => l.id)
+}
+
+/** Drops ids whose group is also in the list (acting on the group covers them). */
+export function topmostOnly(doc: ImageDocument, ids: string[]): string[] {
+  const set = new Set(ids)
+  return ids.filter((id) => {
+    for (let p = layer(doc, id).parent; p; p = findLayer(doc, p)?.parent) if (set.has(p)) return false
+    return true
+  })
+}
+
+/** Sets the layer selection; `active` must be one of `ids`. */
+export function setLayerSelection(doc: ImageDocument, ids: string[], active: string): void {
+  doc.activeLayerId = active
+  doc.target = 'pixels'
+  if (ids.length > 1) doc.selectedLayers = ids
+  else delete doc.selectedLayers
+}
+
+export function deleteLayers(doc: ImageDocument, ids: string[]): void {
+  for (const id of topmostOnly(doc, ids)) deleteLayer(doc, id)
+  delete doc.selectedLayers
+}
+
+/** Puts several layers (kept in stack order) into one new group above the topmost. */
+export function groupLayers(doc: ImageDocument, ids: string[], name?: string): string {
+  const roots = topmostOnly(doc, ids)
+  if (roots.length === 1) return groupLayer(doc, roots[0], name)
+  for (const id of roots) unlocked(doc, id, 'group it')
+  const topIdx = Math.max(...roots.map((id) => doc.layers.findIndex((l) => l.id === id)))
+  const top = doc.layers[topIdx]
+  const g = { ...createLayer(name ?? nextLayerName(doc, 'Group'), { type: 'group', collapsed: false }), blend: 'pass-through' as BlendMode, parent: top.parent ?? null }
+  // Each selected layer moves with everything inside it.
+  const moving = new Set<string>()
+  for (const id of roots) {
+    moving.add(id)
+    for (const d of descendants(doc.layers, id)) moving.add(d.id)
+  }
+  const block = doc.layers.filter((l) => moving.has(l.id))
+  const rest = doc.layers.filter((l) => !moving.has(l.id))
+  // The group goes where the topmost selected layer was (just above its remaining neighbour below).
+  const anchor = doc.layers.slice(0, topIdx + 1).filter((l) => !moving.has(l.id)).pop()
+  const at = anchor ? rest.indexOf(anchor) + 1 : 0
+  for (const id of roots) layer(doc, id).parent = g.id
+  doc.layers = [...rest.slice(0, at), ...block, g, ...rest.slice(at)]
+  doc.activeLayerId = g.id
+  doc.target = 'pixels'
+  delete doc.selectedLayers
+  return g.id
+}
+
+/** Layers that move when `ids` move: groups contribute their contents; full-canvas layers don't move. */
+export function movableLayerIds(doc: ImageDocument, ids: string[]): string[] {
+  const out = new Set<string>()
+  for (const id of ids) for (const l of [layer(doc, id), ...descendants(doc.layers, id)]) if (l.content.type === 'raster' || isVector(l.content)) out.add(l.id)
+  return [...out]
+}
+
+/** Moves each layer by its own offset (Align / Distribute). Locked layers stay put (they still count as a reference). */
+export function offsetEach(doc: ImageDocument, moves: Record<string, { dx: number; dy: number }>): void {
+  for (const [id, m] of Object.entries(moves)) {
+    if (!m.dx && !m.dy) continue
+    const ids = movableLayerIds(doc, [id]).filter((x) => !layer(doc, x).locked)
+    offsetLayers(doc, positionsOf(doc, ids), m.dx, m.dy)
+  }
+}
+
 /** Puts a layer into a new group in its place (Ctrl+G). */
 export function groupLayer(doc: ImageDocument, id: string, name?: string): string {
   const l = unlocked(doc, id, 'group it')

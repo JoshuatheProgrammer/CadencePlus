@@ -152,6 +152,16 @@ export function applyToLayer(doc: ImageDocument, content: TileSurface, source: S
   return out
 }
 
+/** The exact box of a surface's non-transparent pixels (tile bounds are 256-px coarse). */
+export function pixelBounds(content: TileSurface): Rect | null {
+  const full = rasterToCanvas(content, 'bounds')
+  if (!full) return null
+  const { w, h } = full.rect
+  const d = ctx2d(full.canvas).getImageData(0, 0, w, h).data
+  const b = maskBounds(d, w, h, 4, 3)
+  return b ? { x: full.rect.x + b.x, y: full.rect.y + b.y, w: b.w, h: b.h } : null
+}
+
 /** A layer's own pixels in a document-sized canvas (fill layers cover the canvas). */
 export function layerCanvas(doc: ImageDocument, l: Layer, key = 'layer'): OffscreenCanvas {
   const c = poolCanvas(key, doc.width, doc.height)

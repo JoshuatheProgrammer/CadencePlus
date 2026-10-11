@@ -1535,3 +1535,8 @@
   font-weight: 600;
   margin: 2px 0 10px;
 }
+
+/* Layers selected together with the active one (Ctrl/Shift+click) */
+.layer-row.selected {
+  background: color-mix(in srgb, var(--c-select) 60%, transparent);
+}

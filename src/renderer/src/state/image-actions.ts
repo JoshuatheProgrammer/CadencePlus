@@ -5,14 +5,15 @@
 import { ADJUSTMENTS, defaultAdjustment, type Adjustment, type AdjustmentKind, type PixelOp } from '@core/adjustments'
 import * as E from '@core/edit'
 import type { LayerEffects } from '@core/effects'
-import { activeLayer, createDocument, docColor, TILE, type DocColor, type ImageDocument, type Rect, type TileMap } from '@core/model'
+import { activeLayer, createDocument, docColor, isVector, TILE, unionRect, type DocColor, type ImageDocument, type Rect, type TileMap } from '@core/model'
+import { vectorBounds } from '../engine/vector'
 import { ctx2d, pixelCanvas, withFormat } from '../engine/format'
 import { descendants, effectivelyVisible } from '@core/tree'
 import * as S from '@core/selection'
 import type { BrushOptions } from '../engine/brush'
 import type { Stroke } from '../engine/brush'
 import { canvasToPng, decodeImage } from '../engine/io'
-import { rasterizeTiles, applyMaskTiles, applyToLayer, bucketSource, canvasSource, colorSource, copyPixels, filterLayer, invertMaskTiles, layerCanvas, maskTilesFromSelection, maskVisibility, mergeToTiles, sampleColor, transformLayers, wandMask, type DocTransform, type Source } from '../engine/pixels'
+import { pixelBounds, rasterizeTiles, applyMaskTiles, applyToLayer, bucketSource, canvasSource, colorSource, copyPixels, filterLayer, invertMaskTiles, layerCanvas, maskTilesFromSelection, maskVisibility, mergeToTiles, sampleColor, transformLayers, wandMask, type DocTransform, type Source } from '../engine/pixels'
 import { maskFromCanvas, selectionBounds } from '../engine/selection'
 import { rasterToCanvas, releasePool, solidTiles, tilesFromCanvas } from '../engine/tiles'
 import { addDocument, attempt, edit, holdingTiles, silent } from './doc-actions'
@@ -32,7 +33,7 @@ export const newGroup = () => edit('New Group', (d) => void E.addGroup(d))
 
 export function groupActive(): void {
   const d = doc()
-  if (d?.activeLayerId) edit('Group Layers', (x) => void E.groupLayer(x, d.activeLayerId!))
+  if (d?.activeLayerId) edit('Group Layers', (x) => void E.groupLayers(x, E.selectedLayerIds(d)))
 }
 
 export function ungroupActive(): void {
@@ -63,16 +64,105 @@ export const selectLayer = (id: string, target: 'pixels' | 'mask' = 'pixels') =>
   silent((d) => {
     d.activeLayerId = id
     d.target = target === 'mask' && d.layers.find((l) => l.id === id)?.mask ? 'mask' : 'pixels'
+    delete d.selectedLayers
   })
+}
+
+/** Ctrl+click in the Layers panel: adds or removes a layer from the selection. */
+export function toggleLayerSelected(id: string): void {
+  const d = doc()
+  if (!d) return
+  const cur = E.selectedLayerIds(d)
+  const ids = cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id]
+  if (!ids.length) return
+  const active = ids.includes(id) ? id : ids[ids.length - 1]
+  silent((x) => E.setLayerSelection(x, ids, active))
+}
+
+/** Shift+click in the Layers panel: selects the rows between the active layer and `id` (`rows`: panel order). */
+export function selectLayerRange(id: string, rows: string[]): void {
+  const d = doc()
+  if (!d?.activeLayerId) return selectLayer(id)
+  const a = rows.indexOf(d.activeLayerId)
+  const b = rows.indexOf(id)
+  if (a < 0 || b < 0) return selectLayer(id)
+  const ids = rows.slice(Math.min(a, b), Math.max(a, b) + 1)
+  silent((x) => E.setLayerSelection(x, ids, id))
+}
+
+export function selectAllLayers(): void {
+  const d = doc()
+  if (!d) return
+  const ids = d.layers.filter((l) => !l.parent).map((l) => l.id)
+  silent((x) => E.setLayerSelection(x, ids, d.activeLayerId && ids.includes(d.activeLayerId) ? d.activeLayerId : ids[ids.length - 1]))
 }
 
 export function duplicateLayer(): void {
   const d = doc()
-  if (d?.activeLayerId) edit('Duplicate Layer', (x) => void E.duplicateLayer(x, d.activeLayerId!))
+  if (!d?.activeLayerId) return
+  const ids = E.topmostOnly(d, E.selectedLayerIds(d))
+  edit(ids.length > 1 ? 'Duplicate Layers' : 'Duplicate Layer', (x) => {
+    const copies = ids.map((id) => E.duplicateLayer(x, id))
+    if (copies.length > 1) E.setLayerSelection(x, copies, copies[copies.length - 1])
+  })
 }
 
-export function deleteLayer(id = doc()?.activeLayerId): void {
-  if (id) edit('Delete Layer', (x) => E.deleteLayer(x, id))
+/** Deletes `id`, or every selected layer. */
+export function deleteLayer(id?: string): void {
+  const d = doc()
+  if (!d) return
+  const ids = id && !E.selectedLayerIds(d).includes(id) ? [id] : E.selectedLayerIds(d)
+  if (ids.length) edit(ids.length > 1 ? 'Delete Layers' : 'Delete Layer', (x) => E.deleteLayers(x, ids))
+}
+
+export type AlignEdge = 'left' | 'hcenter' | 'right' | 'top' | 'vcenter' | 'bottom'
+
+/** Bounds of what a layer shows (groups: their contents), document pixels. */
+function boundsOf(d: ImageDocument, id: string): Rect | null {
+  let r: Rect | null = null
+  for (const l of [d.layers.find((x) => x.id === id)!, ...descendants(d.layers, id)]) {
+    if (l.content.type === 'raster') r = unionRect(r, pixelBounds(l.content))
+    else if (isVector(l.content)) r = unionRect(r, vectorBounds(l.content))
+  }
+  return r
+}
+
+/** Layer → Align: selected layers to each other, or one layer to the selection. */
+export function alignLayers(edge: AlignEdge): void {
+  const d = doc()
+  if (!d) return
+  const ids = E.topmostOnly(d, E.selectedLayerIds(d))
+  const boxes = ids.map((id) => [id, boundsOf(d, id)] as const).filter((b): b is readonly [string, Rect] => !!b[1])
+  const target = ids.length === 1 && d.selection ? selectionBounds(d.selection, d.width, d.height) : boxes.reduce<Rect | null>((u, [, b]) => unionRect(u, b), null)
+  if (!target || (boxes.length < 2 && !(ids.length === 1 && d.selection))) return void toast('Select two or more layers to align (Ctrl+click in the Layers panel), or one layer and a selection.', 'info')
+  const moves: Record<string, { dx: number; dy: number }> = {}
+  for (const [id, b] of boxes) {
+    const dx = edge === 'left' ? target.x - b.x : edge === 'right' ? target.x + target.w - (b.x + b.w) : edge === 'hcenter' ? Math.round(target.x + target.w / 2 - (b.x + b.w / 2)) : 0
+    const dy = edge === 'top' ? target.y - b.y : edge === 'bottom' ? target.y + target.h - (b.y + b.h) : edge === 'vcenter' ? Math.round(target.y + target.h / 2 - (b.y + b.h / 2)) : 0
+    moves[id] = { dx, dy }
+  }
+  edit('Align', (x) => E.offsetEach(x, moves))
+}
+
+/** Layer → Distribute: spaces the selected layers' edges or centres evenly (3 or more). */
+export function distributeLayers(edge: AlignEdge): void {
+  const d = doc()
+  if (!d) return
+  const boxes = E.topmostOnly(d, E.selectedLayerIds(d))
+    .map((id) => [id, boundsOf(d, id)] as const)
+    .filter((b): b is readonly [string, Rect] => !!b[1])
+  if (boxes.length < 3) return void toast('Select three or more layers to distribute.', 'info')
+  const key = (b: Rect) => (edge === 'left' ? b.x : edge === 'right' ? b.x + b.w : edge === 'hcenter' ? b.x + b.w / 2 : edge === 'top' ? b.y : edge === 'bottom' ? b.y + b.h : b.y + b.h / 2)
+  const horizontal = edge === 'left' || edge === 'right' || edge === 'hcenter'
+  const sorted = [...boxes].sort((a, b) => key(a[1]) - key(b[1]))
+  const first = key(sorted[0][1])
+  const step = (key(sorted[sorted.length - 1][1]) - first) / (sorted.length - 1)
+  const moves: Record<string, { dx: number; dy: number }> = {}
+  sorted.forEach(([id, b], i) => {
+    const delta = Math.round(first + step * i - key(b))
+    moves[id] = horizontal ? { dx: delta, dy: 0 } : { dx: 0, dy: delta }
+  })
+  edit('Distribute', (x) => E.offsetEach(x, moves))
 }
 
 export const setLayerVisible = (id: string, v: boolean) => edit(v ? 'Show Layer' : 'Hide Layer', (d) => E.setLayerVisible(d, id, v))
@@ -94,6 +184,11 @@ export function nudgeActive(dx: number, dy: number): void {
   const d = doc()
   const l = d && activeLayer(d)
   if (!d || !l) return
+  const sel = E.selectedLayerIds(d)
+  if (sel.length > 1) {
+    const starts = E.positionsOf(d, E.movableLayerIds(d, sel))
+    return void edit('Nudge', (x) => E.offsetLayers(x, starts, dx, dy), `nudge:multi:${Date.now()}`)
+  }
   if (l.content.type === 'group') {
     const starts = E.positionsOf(d, descendants(d.layers, l.id).map((x) => x.id))
     return void edit('Nudge', (x) => E.offsetLayers(x, starts, dx, dy), `nudge:${l.id}:${Date.now()}`)
@@ -110,6 +205,14 @@ export function mergeDown(): void {
   const d = doc()
   const a = d && activeLayer(d)
   if (!d || !a) return
+  // With several layers selected, Ctrl+E merges them.
+  const sel = E.topmostOnly(d, E.selectedLayerIds(d))
+  if (sel.length > 1) {
+    const layers = sel.map((id) => d.layers.find((l) => l.id === id)!)
+    if (layers.some((l) => !effectivelyVisible(d, l))) return void toast('All selected layers must be visible to merge.', 'warn')
+    const tiles = mergeToTiles(d, layers)
+    return void edit('Merge Layers', (x) => void E.replaceWithMerged(x, sel, { name: layers[layers.length - 1].name, tiles, x: 0, y: 0 }))
+  }
   // With a group active, Ctrl+E merges the group into one layer.
   if (a.content.type === 'group') {
     if (!effectivelyVisible(d, a)) return void toast('Show the group to merge it.', 'warn')

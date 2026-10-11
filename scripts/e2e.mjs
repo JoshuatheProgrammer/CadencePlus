@@ -1521,6 +1521,86 @@ await check('layer styles round-trip through PSD (ag-psd reads them; Cadence+ re
   return 'stroke + drop shadow written and read back'
 })
 
+const threeSquares = async () => {
+  await closeAllClean()
+  await newDoc(300, 200)
+  const colours = ['#ff0000', '#00ff00', '#0000ff']
+  for (let i = 0; i < 3; i++) {
+    await A('newLayer')
+    await selectRect(20 + i * 90, 20 + i * 30, 40, 40)
+    await A('fillWith', colours[i])
+  }
+  await A('deselect')
+  return (await doc()).layers.slice(1).map((l) => l.id)
+}
+const rowOf = (id) => win.locator(`.layer-row[data-layer="${id}"] .layer-name`)
+
+await check('multi-select layers: Ctrl+click, Shift+click, Ctrl+G groups them in order, Move tool moves them together', async () => {
+  const [a, b, c] = await threeSquares()
+  await rowOf(a).click()
+  await rowOf(c).click({ modifiers: ['Shift'] })
+  await settle()
+  expect((await win.locator('.layer-row.selected, .layer-row.active').count()) === 3, 'Shift+click range')
+  await rowOf(b).click({ modifiers: ['Control'] })
+  await settle()
+  let sel = await ev(() => window.__cadencePlus.get().docs[0].history.present.selectedLayers)
+  expect(sel?.length === 2 && !sel.includes(b), `Ctrl+click removes: ${sel}`)
+  // Move tool: drag the two selected squares 10 px right.
+  await win.keyboard.press('v')
+  await drag([[150, 150], [160, 150]])
+  const moved = { a: await px(25, 25), aNew: await px(65, 25), b: await px(115, 55), c: await px(205, 85), cNew: await px(245, 85) }
+  expect(near(moved.a, [255, 255, 255, 255]) && near(moved.aNew, [255, 0, 0, 255]) && near(moved.b, [0, 255, 0, 255]) && near(moved.cNew, [0, 0, 255, 255]), `move ${JSON.stringify(moved)}`)
+  // Group the selection.
+  await win.keyboard.press('Control+g')
+  await settle()
+  const d = await doc()
+  const g = d.layers.find((l) => l.content.type === 'group')
+  const kids = d.layers.filter((l) => l.parent === g?.id).map((l) => l.id)
+  expect(g && kids.join() === [a, c].join(), `group children ${kids} (want ${a},${c})`)
+  expect(d.layers.map((l) => l.id).indexOf(b) < d.layers.indexOf(g), 'group is not above the unselected layer below the top one')
+  return `range 3 → ctrl 2 → moved → grouped ${kids.length}`
+})
+
+await check('Align and Distribute selected layers; Ctrl+E merges the selection; delete removes all selected', async () => {
+  const [a, b, c] = await threeSquares()
+  await ev(() => window.__cadencePlus.run('layer.selectAll'))
+  await ev(() => window.__cadencePlus.run('layer.align.left'))
+  await settle()
+  const lefts = [await px(25, 40), await px(25, 70), await px(25, 100)]
+  expect(near(lefts[0], [255, 0, 0, 255]) && near(lefts[1], [0, 255, 0, 255]) && near(lefts[2], [0, 0, 255, 255]), `align left ${JSON.stringify(lefts)}`)
+  await ev(() => window.__cadencePlus.run('edit.undo'))
+  // Distribute vertical centres: tops at 20, 50, 80 are already even → move the middle one first.
+  await ev(([id]) => window.__cadencePlus.A.selectLayer(id), [b])
+  await A('nudgeActive', 0, 30)
+  await ev(() => window.__cadencePlus.run('layer.selectAll'))
+  await ev(() => window.__cadencePlus.run('layer.distribute.vcenter'))
+  await settle()
+  expect(near(await px(115, 55), [0, 255, 0, 255]) && near(await px(115, 95), [255, 255, 255, 255]), `distribute ${await px(115, 55)} ${await px(115, 95)}`)
+  // Merge the three.
+  await ev(() => window.__cadencePlus.run('layer.selectAll'))
+  await ev(([ids]) => {
+    const { A } = window.__cadencePlus
+    A.selectLayer(ids[0])
+    A.toggleLayerSelected(ids[1])
+    A.toggleLayerSelected(ids[2])
+  }, [[a, b, c]])
+  await win.keyboard.press('Control+e')
+  await settle()
+  let d = await doc()
+  expect(d.layers.length === 2 && (await lastLabel()) === 'Merge Layers', `merge left ${d.layers.length} layers (${await lastLabel()})`)
+  expect(near(await px(25, 25), [255, 0, 0, 255]) && near(await px(205, 85), [0, 0, 255, 255]), 'merged pixels')
+  await ev(() => window.__cadencePlus.run('edit.undo'))
+  await ev(([ids]) => {
+    const { A } = window.__cadencePlus
+    A.selectLayer(ids[0])
+    A.toggleLayerSelected(ids[2])
+  }, [[a, b, c]])
+  await ev(() => window.__cadencePlus.run('layer.delete'))
+  d = await doc()
+  expect(d.layers.length === 2 && d.layers[1].id === b, `delete selected left ${d.layers.map((l) => l.name)}`)
+  return 'aligned, distributed, merged, deleted'
+})
+
 await check('tool groups: rail shows one slot per group; right-click lists the group', async () => {
   await win.keyboard.press('o')
   const slot = win.locator('.tool-btn.active')

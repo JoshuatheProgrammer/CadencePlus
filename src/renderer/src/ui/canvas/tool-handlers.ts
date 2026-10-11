@@ -97,6 +97,24 @@ const move: Handler = (c, p) => {
   const l = activeLayer(doc)
   if (!l) return null
   if (l.locked) return toast(`“${l.name}” is locked. Unlock it to move it.`, 'warn'), null
+  // Several layers selected: they move together.
+  const sel = E.selectedLayerIds(doc)
+  if (sel.length > 1) {
+    const ids = E.movableLayerIds(doc, sel)
+    const locked = ids.map((id) => doc.layers.find((x) => x.id === id)!).find((x) => x.locked)
+    if (locked) return toast(`“${locked.name}” is locked. Unlock it to move it.`, 'warn'), null
+    const starts = E.positionsOf(doc, ids)
+    const mkey = `move:multi:${Date.now()}`
+    return {
+      move(q, e) {
+        let dx = Math.round(q.x - p.x)
+        let dy = Math.round(q.y - p.y)
+        if (e.shiftKey) Math.abs(dx) > Math.abs(dy) ? (dy = 0) : (dx = 0)
+        edit('Move', (x) => E.offsetLayers(x, starts, dx, dy), mkey)
+      },
+      up() {}
+    }
+  }
   if (l.content.type === 'group') {
     const starts = E.positionsOf(doc, descendants(doc.layers, l.id).map((x) => x.id))
     const gkey = `move:${l.id}:${Date.now()}`

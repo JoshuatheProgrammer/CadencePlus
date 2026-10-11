@@ -8,6 +8,7 @@ import * as A from './image-actions'
 import { activeDoc, activeDocState, get, set, setToolOption, toast, type PanelId, type ToolId } from './store'
 import { TOOL_GROUPS, TOOL_LIST } from './tools'
 import { canHaveEffects, EFFECT_KINDS, EFFECT_LABELS } from '@core/effects'
+import { selectedLayerIds } from '@core/edit'
 import { PROOF_LABELS } from '../engine/ops'
 import { docColor, type DocColor } from '@core/model'
 import * as T from './transform-actions'
@@ -42,6 +43,19 @@ function toggleTarget(): void {
   const l = activeL()
   if (d && l?.mask) A.selectLayer(l.id, d.target === 'mask' ? 'pixels' : 'mask')
 }
+const selCount = () => {
+  const d = activeDoc()
+  return d ? selectedLayerIds(d).length : 0
+}
+const canAlign = () => selCount() >= 2 || (selCount() === 1 && !!activeDoc()?.selection)
+const ALIGN_LABELS = {
+  left: ['Left Edges', 'Left Edges'],
+  hcenter: ['Horizontal Centers', 'Horizontal Centers'],
+  right: ['Right Edges', 'Right Edges'],
+  top: ['Top Edges', 'Top Edges'],
+  vcenter: ['Vertical Centers', 'Vertical Centers'],
+  bottom: ['Bottom Edges', 'Bottom Edges']
+} as const
 const canStyle = () => {
   const l = activeL()
   return !!l && canHaveEffects(l)
@@ -149,6 +163,11 @@ export const COMMANDS: Command[] = [
   // Filter
   ...EFFECT_KINDS.map((k) => ({ id: `layer.style.${k}`, label: `${EFFECT_LABELS[k]}…`, run: () => set({ dialog: { kind: 'layerStyle', effect: k } }), enabled: canStyle })),
   { id: 'layer.style.clear', label: 'Clear Layer Style', run: () => A.setLayerEffects(activeL()!.id, undefined), enabled: () => canStyle() && !!activeL()?.effects },
+  { id: 'layer.selectAll', label: 'All Layers', keys: ['Ctrl+Alt+A'], run: A.selectAllLayers, enabled: hasDoc },
+  ...(['left', 'hcenter', 'right', 'top', 'vcenter', 'bottom'] as const).flatMap((e) => [
+    { id: `layer.align.${e}`, label: ALIGN_LABELS[e][0], run: () => A.alignLayers(e), enabled: canAlign },
+    { id: `layer.distribute.${e}`, label: ALIGN_LABELS[e][1], run: () => A.distributeLayers(e), enabled: () => selCount() >= 3 }
+  ]),
   { id: 'select.quickMask', label: 'Edit in Quick Mask Mode', keys: ['Q'], run: A.toggleQuickMask, enabled: hasDoc },
   { id: 'select.colorRange', label: 'Color Range…', run: () => set({ dialog: { kind: 'colorRange' } }), enabled: hasDoc },
   { id: 'filter.blur', label: 'Gaussian Blur…', run: () => set({ dialog: { kind: 'blur' } }), enabled: hasDoc },

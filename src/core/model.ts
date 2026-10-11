@@ -130,6 +130,12 @@ export interface ImageDocument {
   /** Bottom → top. */
   layers: Layer[]
   activeLayerId: string | null
+  /**
+   * Layers selected together with the active one (Ctrl/Shift+click in the
+   * Layers panel). Only meaningful while it contains the active layer;
+   * otherwise just the active layer is selected.
+   */
+  selectedLayers?: string[]
   selection: Selection | null
   /** Which part of the active layer edits go to (missing = pixels). */
   target?: 'pixels' | 'mask'

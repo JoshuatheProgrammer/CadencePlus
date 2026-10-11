@@ -205,6 +205,14 @@ function menus(): Record<string, MenuEntry[]> {
       { sep: true },
       { cmd: 'layer.rasterize' },
       { label: 'Arrange', submenu: () => [{ cmd: 'layer.forward' }, { cmd: 'layer.backward' }] },
+      {
+        label: 'Align',
+        submenu: () => [{ cmd: 'layer.align.top' }, { cmd: 'layer.align.vcenter' }, { cmd: 'layer.align.bottom' }, { sep: true }, { cmd: 'layer.align.left' }, { cmd: 'layer.align.hcenter' }, { cmd: 'layer.align.right' }]
+      },
+      {
+        label: 'Distribute',
+        submenu: () => [{ cmd: 'layer.distribute.top' }, { cmd: 'layer.distribute.vcenter' }, { cmd: 'layer.distribute.bottom' }, { sep: true }, { cmd: 'layer.distribute.left' }, { cmd: 'layer.distribute.hcenter' }, { cmd: 'layer.distribute.right' }]
+      },
       { sep: true },
       { cmd: 'layer.mergeDown' },
       { cmd: 'layer.mergeVisible' },
@@ -214,6 +222,8 @@ function menus(): Record<string, MenuEntry[]> {
       { cmd: 'select.all' },
       { cmd: 'select.deselect' },
       { cmd: 'select.inverse' },
+      { sep: true },
+      { cmd: 'layer.selectAll' },
       { sep: true },
       { cmd: 'select.colorRange' },
       { cmd: 'select.feather' },

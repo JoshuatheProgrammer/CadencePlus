@@ -2,6 +2,7 @@ import { memo, useEffect, useRef, useState } from 'react'
 import { ADJUSTMENT_KINDS, ADJUSTMENTS } from '@core/adjustments'
 import { BLEND_MODES, type ImageDocument, type Layer } from '@core/model'
 import { displayRows } from '@core/tree'
+import { selectedLayerIds } from '@core/edit'
 import { renderDocument } from '../../engine/render'
 import { poolCanvas } from '../../engine/tiles'
 import * as A from '../../state/image-actions'
@@ -84,7 +85,7 @@ const MaskThumb = memo(function MaskThumb({ doc, layer }: { doc: ImageDocument; 
   return <canvas ref={ref} className="layer-thumb" style={{ width: THUMB, height: THUMB }} />
 }, (a, b) => a.layer.mask === b.layer.mask && a.layer.id === b.layer.id && a.doc.width === b.doc.width && a.doc.height === b.doc.height)
 
-function LayerRow({ doc, layer, depth, active, onDragStart, renaming, setRenaming, dropInto }: { doc: ImageDocument; layer: Layer; depth: number; active: boolean; onDragStart: (e: React.PointerEvent, id: string) => void; renaming: boolean; setRenaming: (id: string | null) => void; dropInto: boolean }) {
+function LayerRow({ doc, layer, depth, active, selected, rowIds, onDragStart, renaming, setRenaming, dropInto }: { doc: ImageDocument; layer: Layer; depth: number; active: boolean; selected: boolean; rowIds: string[]; onDragStart: (e: React.PointerEvent, id: string) => void; renaming: boolean; setRenaming: (id: string | null) => void; dropInto: boolean }) {
   const maskView = useEditor((s) => s.maskView)
   const onMask = active && doc.target === 'mask' && !!layer.mask
   const [name, setName] = useState(layer.name)
@@ -94,26 +95,33 @@ function LayerRow({ doc, layer, depth, active, onDragStart, renaming, setRenamin
   const collapsed = layer.content.type === 'group' && layer.content.collapsed
   return (
     <div
-      className={`layer-row${active ? ' active' : ''}${layer.visible ? '' : ' hidden'}${isGroup ? ' group' : ''}${dropInto ? ' drop-into' : ''}`}
+      className={`layer-row${active ? ' active' : selected ? ' selected' : ''}${layer.visible ? '' : ' hidden'}${isGroup ? ' group' : ''}${dropInto ? ' drop-into' : ''}`}
       data-layer={layer.id}
       onPointerDown={(e) => {
         if (e.button !== 0 || renaming) return
         if ((e.target as HTMLElement).closest('button')) return
         // Clicking the mask thumbnail targets the mask; anywhere else targets the pixels.
         const toMask = !!(e.target as HTMLElement).closest('.mask-thumb')
-        if (!toMask || !(e.shiftKey || e.altKey || e.ctrlKey)) A.selectLayer(layer.id, toMask ? 'mask' : 'pixels')
+        // Ctrl+click adds/removes layers, Shift+click selects a run of rows.
+        if (!toMask && e.ctrlKey) return A.toggleLayerSelected(layer.id)
+        if (!toMask && e.shiftKey) return A.selectLayerRange(layer.id, rowIds)
+        if (!toMask || !(e.shiftKey || e.altKey || e.ctrlKey)) {
+          // Pressing on a row that is part of a multi-selection keeps it (for dragging).
+          if (!(selected && !toMask)) A.selectLayer(layer.id, toMask ? 'mask' : 'pixels')
+          else if (!active) A.selectLayer(layer.id)
+        }
         onDragStart(e, layer.id)
       }}
       onDoubleClick={(e) => {
         if ((e.target as HTMLElement).closest('.layer-name')) setRenaming(layer.id)
       }}
       onContextMenu={(e) => {
-        A.selectLayer(layer.id)
+        if (!selected) A.selectLayer(layer.id)
         showContextMenu(e, [
           { label: isGroup ? 'Rename Group…' : 'Rename Layer…', action: () => setRenaming(layer.id) },
           { label: isGroup ? 'Duplicate Group' : 'Duplicate Layer', action: A.duplicateLayer },
           ...(isGroup ? [{ label: 'Ungroup Layers', action: A.ungroupActive, kbd: keysFor('layer.ungroup')[0] }] : [{ label: 'Group Layer', action: A.groupActive, kbd: keysFor('layer.group')[0] }]),
-          { label: 'Delete Layer', action: () => A.deleteLayer(layer.id), disabled: layer.locked || doc.layers.length < 2 },
+          { label: selected && !active ? 'Delete Layers' : 'Delete Layer', action: () => A.deleteLayer(layer.id), disabled: layer.locked || doc.layers.length < 2 },
           { sep: true },
           { label: 'Select Pixels', action: () => A.selectLayerPixels(layer.id), disabled: layer.content.type === 'adjustment' },
           { label: 'Rasterize Layer', action: A.rasterizeActive, disabled: layer.content.type === 'raster' || layer.content.type === 'adjustment' },
@@ -237,6 +245,8 @@ export function LayersPanel() {
   if (!doc) return <div className="panel"><div className="empty-hint">Open or create a document to see its layers.</div></div>
   const active = doc.layers.find((l) => l.id === doc.activeLayerId) ?? null
   const rows = displayRows(doc.layers)
+  const rowIds = rows.map((r) => r.layer.id)
+  const selectedIds = new Set(selectedLayerIds(doc))
 
   const startDrag = (e: React.PointerEvent, id: string) => {
     const startY = e.clientY
@@ -334,6 +344,8 @@ export function LayersPanel() {
             layer={l}
             depth={depth}
             active={l.id === doc.activeLayerId}
+            selected={selectedIds.has(l.id)}
+            rowIds={rowIds}
             onDragStart={startDrag}
             renaming={renaming === l.id}
             setRenaming={setRenaming}
