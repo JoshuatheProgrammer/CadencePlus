@@ -30,6 +30,8 @@ export interface CadencePlusApi {
   saveDocumentDialog(defaultName: string): Promise<string | null>
   /** Save dialog for an exported image. */
   exportDialog(defaultName: string, ext: string): Promise<string | null>
+  /** Folder picker (Export with Presets). */
+  folderDialog(title: string): Promise<string | null>
   readFile(path: string): Promise<Uint8Array>
   /** Writes via a temp file + rename; `backup` keeps the previous version as .bak. */
   writeFile(path: string, data: Uint8Array, backup?: boolean): Promise<void>

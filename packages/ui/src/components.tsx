@@ -239,7 +239,12 @@ export function NumberInput({ value, onChange, min, max, width = 80, decimals = 
 // Modal
 // ---------------------------------------------------------------------------
 
-export function Modal({ title, children, actions, onClose, onSubmit, width }: { title: string; children: ReactNode; actions: ReactNode; onClose?: () => void; onSubmit?: () => void; width?: number }) {
+/**
+ * A dialog. `preview`: the dialog previews its effect on the canvas, so the
+ * backdrop stays clear, the dialog sits to the side and its title bar drags
+ * it out of the way.
+ */
+export function Modal({ title, children, actions, onClose, onSubmit, width, preview }: { title: string; children: ReactNode; actions: ReactNode; onClose?: () => void; onSubmit?: () => void; width?: number; preview?: boolean }) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       // The shortcut editor is recording a key: let it have every key.
@@ -257,10 +262,25 @@ export function Modal({ title, children, actions, onClose, onSubmit, width }: { 
     window.addEventListener('keydown', onKey, true)
     return () => window.removeEventListener('keydown', onKey, true)
   }, [onClose, onSubmit])
+  const [offset, setOffset] = useState({ x: 0, y: 0 })
+  const dragTitle = (e: React.PointerEvent) => {
+    if (!preview || e.button !== 0) return
+    const sx = e.clientX - offset.x
+    const sy = e.clientY - offset.y
+    const move = (ev: PointerEvent) => setOffset({ x: ev.clientX - sx, y: ev.clientY - sy })
+    const up = () => {
+      window.removeEventListener('pointermove', move)
+      window.removeEventListener('pointerup', up)
+    }
+    window.addEventListener('pointermove', move)
+    window.addEventListener('pointerup', up)
+  }
   return (
-    <div className="modal-back" onMouseDown={(e) => e.target === e.currentTarget && onClose?.()}>
-      <div className="modal" style={width ? { width } : undefined} role="dialog" aria-label={title}>
-        <h2>{title}</h2>
+    <div className={`modal-back${preview ? ' preview' : ''}`} onMouseDown={(e) => !preview && e.target === e.currentTarget && onClose?.()}>
+      <div className="modal" style={{ ...(width ? { width } : {}), ...(offset.x || offset.y ? { transform: `translate(${offset.x}px, ${offset.y}px)` } : {}) }} role="dialog" aria-label={title}>
+        <h2 onPointerDown={dragTitle} style={preview ? { cursor: 'move' } : undefined} title={preview ? 'Drag to move the dialog' : undefined}>
+          {title}
+        </h2>
         <div className="body">{children}</div>
         <div className="actions">{actions}</div>
       </div>

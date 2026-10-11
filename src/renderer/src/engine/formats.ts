@@ -13,7 +13,7 @@ import { inflate } from '@core/png'
 import { canHaveEffects, type LayerEffects } from '@core/effects'
 import { tree } from '@core/tree'
 import { ctx2d, withFormat } from './format'
-import { canvasFromRgba, documentFromRgba, type ImportResult } from './io'
+import { canvasFromRgba, documentFromRgba, scaledComposite, type ImportResult } from './io'
 import { rasterizeTiles } from './pixels'
 import { renderComposite } from './render'
 import { drawTiles, rasterToCanvas, tilesFromCanvas } from './tiles'
@@ -412,11 +412,11 @@ async function p3Profile(): Promise<Uint8Array> {
 }
 
 /** Uncompressed RGBA TIFF, 8 or 16 bits/channel, with an embedded profile for P3 documents. */
-export async function exportTiff(doc: ImageDocument, sixteenBit: boolean): Promise<Uint8Array> {
+export async function exportTiff(doc: ImageDocument, sixteenBit: boolean, scale = 1): Promise<Uint8Array> {
   const f = docColor(doc)
-  const W = doc.width
-  const H = doc.height
-  const comp = withFormat(f, () => renderComposite(doc, 'tiff'))
+  const comp = withFormat(f, () => scaledComposite(doc, scale, 'tiff'))
+  const W = comp.width
+  const H = comp.height
   const bits = sixteenBit && f.depth === 16 ? 16 : 8
   const g = comp.getContext('2d') as OffscreenCanvasRenderingContext2D
   const icc = f.space === 'display-p3' ? await p3Profile() : null

@@ -4,6 +4,7 @@
  */
 import type { FilterKind, ToneRange } from '@core/filters'
 import type { EffectKind, LayerEffects } from '@core/effects'
+import { DEFAULT_PRESETS, type ExportPreset } from '@core/export-presets'
 import { create } from 'zustand'
 import type { AdjustmentKind } from '@core/adjustments'
 import type { History } from '@cadence/core/history'
@@ -103,6 +104,7 @@ export type Dialog =
   | { kind: 'filter'; filter: FilterKind }
   | { kind: 'colorRange' }
   | { kind: 'layerStyle'; effect: EffectKind }
+  | { kind: 'exportPresets' }
   | { kind: 'imageSize' }
   | { kind: 'canvasSize' }
   | { kind: 'feather' }
@@ -136,6 +138,8 @@ export interface EditorState {
   viewport: { w: number; h: number }
   stroke: StrokePreview | null
   filterPreview: FilterPreview | null
+  /** File → Export with Presets (saved in settings). */
+  exportPresets: ExportPreset[]
   /** Layer Style dialog preview. */
   effectsPreview: { layerId: string; effects: LayerEffects } | null
   /** Pending crop rectangle (document pixels). */
@@ -188,6 +192,7 @@ export const useEditor = create<EditorState>(() => ({
   stroke: null,
   filterPreview: null,
   effectsPreview: null,
+  exportPresets: structuredClone(DEFAULT_PRESETS),
   crop: null,
   busy: null,
   maskView: null,

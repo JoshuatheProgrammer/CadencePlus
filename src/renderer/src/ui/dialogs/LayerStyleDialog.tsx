@@ -46,6 +46,7 @@ export function LayerStyleDialog({ focus }: { focus: EffectKind }) {
   const pct = (v: unknown) => Math.round((v as number) * 100)
   return (
     <Modal
+      preview
       title={`Layer Style — ${layer.name}`}
       onClose={close}
       onSubmit={ok}

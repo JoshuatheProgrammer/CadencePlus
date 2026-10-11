@@ -4,6 +4,7 @@ import { formatZoom } from '@core/view'
 import { formatLabel } from '../engine/format'
 import { storeStats } from '../engine/tiles'
 import { docColor } from '@core/model'
+import type { ExportPreset } from '@core/export-presets'
 import { command, currentColor, handleKeydown, keysFor, run } from '../state/commands'
 import { confirmQuit, displayName, formatBytes, newDocument, openDialog, openPaths, setZoom, titleFor } from '../state/doc-actions'
 import * as A from '../state/image-actions'
@@ -105,6 +106,7 @@ function menus(): Record<string, MenuEntry[]> {
       { cmd: 'file.save' },
       { cmd: 'file.saveAs' },
       { cmd: 'file.export' },
+      { cmd: 'file.exportPresets' },
       { sep: true },
       { label: 'Exit', action: () => window.close() }
     ],
@@ -637,6 +639,7 @@ export function App() {
       set({
         recent: (s.recentFiles as string[]) ?? [],
         keyOverrides: (s.keymap as Record<string, string[]>) ?? {},
+        ...(Array.isArray(s.exportPresets) && s.exportPresets.length ? { exportPresets: s.exportPresets as ExportPreset[] } : {}),
         ...(Array.isArray(s.swatches) ? { swatches: s.swatches as string[] } : {})
       })
     })

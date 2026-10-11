@@ -15,6 +15,7 @@ import { ShortcutsDialog } from './ShortcutsDialog'
 import { FilterDialog } from './FilterDialog'
 import { ColorRangeDialog } from './ColorRangeDialog'
 import { LayerStyleDialog } from './LayerStyleDialog'
+import { ExportPresetsDialog } from './ExportPresetsDialog'
 
 const close = () => set({ dialog: null, filterPreview: null })
 
@@ -158,6 +159,7 @@ function AdjustDialog({ kind }: { kind: AdjustmentKind }) {
   if (!target) return null
   return (
     <Modal
+      preview
       title={def.label}
       onClose={close}
       onSubmit={ok}
@@ -204,6 +206,7 @@ function BlurDialog() {
   if (!target) return null
   return (
     <Modal
+      preview
       title="Gaussian Blur"
       onClose={close}
       onSubmit={ok}
@@ -385,6 +388,7 @@ function ExportDialog() {
   const [format, setFormat] = useState<ExportFormat>('png')
   const [quality, setQuality] = useState(90)
   const [sixteen, setSixteen] = useState(true)
+  const [scale, setScale] = useState(100)
   const [estimate, setEstimate] = useState<string>('…')
   const color = docColor(activeDoc()!)
   useEffect(() => {
@@ -393,7 +397,7 @@ function ExportDialog() {
     const t = setTimeout(() => {
       const d = activeDoc()
       if (!d) return
-      exportImage(d, format, quality / 100, { sixteenBit: sixteen })
+      exportImage(d, format, quality / 100, { sixteenBit: sixteen, scale: scale / 100 })
         .then((b) => live && setEstimate(formatBytes(b.length)))
         .catch((e: Error) => live && setEstimate(e.message))
     }, 200)
@@ -401,11 +405,11 @@ function ExportDialog() {
       live = false
       clearTimeout(t)
     }
-  }, [format, quality, sixteen])
+  }, [format, quality, sixteen, scale])
   const d = activeDoc()!
   const ok = () => {
     close()
-    void exportAs(format, quality / 100, { sixteenBit: sixteen })
+    void exportAs(format, quality / 100, { sixteenBit: sixteen, scale: format === 'psd' ? 1 : scale / 100 })
   }
   return (
     <Modal
@@ -438,9 +442,15 @@ function ExportDialog() {
             <SliderField label="" value={quality} min={1} max={100} unit="%" width={180} onChange={setQuality} />
           </>
         )}
+        <label>Scale</label>
+        <div className="pair">
+          <NumberInput value={format === 'psd' ? 100 : scale} min={1} max={1000} onChange={setScale} />
+          <span className="unit">%</span>
+          {format === 'psd' && <span className="note">PSD keeps the document size</span>}
+        </div>
         <label>Image</label>
         <span className="note">
-          {d.width} × {d.height} px ·{' '}
+          {format === 'psd' ? d.width : Math.max(1, Math.round((d.width * scale) / 100))} × {format === 'psd' ? d.height : Math.max(1, Math.round((d.height * scale) / 100))} px ·{' '}
           {format === 'psd' ? 'layers, groups, masks, adjustment layers and layer styles; type and shapes as pixels' : `all visible layers, flattened${format === 'jpeg' ? ' · transparency becomes white' : ''}`}
         </span>
         {(format === 'png' || format === 'tiff') && color.depth === 16 && (
@@ -559,6 +569,8 @@ export function Dialogs() {
       return activeDoc() ? <ColorRangeDialog /> : null
     case 'layerStyle':
       return activeDoc() ? <LayerStyleDialog focus={d.effect} /> : null
+    case 'exportPresets':
+      return activeDoc() ? <ExportPresetsDialog /> : null
     case 'imageSize':
       return activeDoc() ? <ImageSizeDialog /> : null
     case 'canvasSize':

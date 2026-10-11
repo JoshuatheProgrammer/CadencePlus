@@ -9,6 +9,7 @@ import { apply, createHistory, jumpTo, redo as hRedo, replace, undo as hUndo } f
 import { collectTileIds, createDocument, DEFAULT_COLOR, docColor, type DocColor, type ImageDocument } from '@core/model'
 import { collectMaskIds } from '@core/selection'
 import { clampZoom, fillView, fitView, formatZoom, nextZoomStep, type View } from '@core/view'
+import { presetFileName, presetScale, type ExportPreset } from '@core/export-presets'
 import { baseName, decodeProject, encodeProject, EXPORT_EXTENSION, exportFile, extOf, importImage, type ExportFormat, type ExportOptions } from '../engine/io'
 import { withFormat } from '../engine/format'
 import { PROOF_LABELS } from '../engine/ops'
@@ -304,6 +305,40 @@ export async function exportAs(format: ExportFormat, quality: number, opts: Expo
   const ext = EXPORT_EXTENSION[format]
   const path = await window.cadencePlus.exportDialog(displayName(ds), ext)
   return path ? exportTo(path, format, quality, opts) : false
+}
+
+/** Saves the preset list (dialog edits). */
+export function setExportPresets(presets: ExportPreset[]): void {
+  set({ exportPresets: presets })
+  void window.cadencePlus.setSetting('exportPresets', presets)
+}
+
+/**
+ * Exports the active document once per enabled preset into `folder`.
+ * Returns the files written.
+ */
+export async function exportWithPresets(folder: string, presets = get().exportPresets.filter((p) => p.enabled)): Promise<string[]> {
+  const ds = activeDocState()
+  if (!ds || !presets.length) return []
+  const d = ds.history.present
+  const name = displayName(ds)
+  const sep = folder.includes('/') && !folder.includes('\\') ? '/' : '\\'
+  const written: string[] = []
+  set({ busy: `Exporting ${presets.length} file${presets.length > 1 ? 's' : ''}…` })
+  try {
+    for (const p of presets) {
+      const { bytes } = await exportFile(d, p.format, p.quality / 100, { scale: presetScale(p, d.width, d.height), sixteenBit: p.sixteenBit })
+      const path = `${folder.replace(/[\\/]+$/, '')}${sep}${presetFileName(name, p)}`
+      await window.cadencePlus.writeFile(path, bytes)
+      written.push(path)
+    }
+    toast(`Exported ${written.length} file${written.length > 1 ? 's' : ''} to ${folder}`, 'success')
+  } catch (e) {
+    toast(`Export failed after ${written.length} file${written.length === 1 ? '' : 's'}.\n${errorText(e)}`, 'error')
+  } finally {
+    set({ busy: null })
+  }
+  return written
 }
 
 export async function exportTo(path: string, format: ExportFormat, quality: number, opts: ExportOptions = {}): Promise<boolean> {

@@ -80,6 +80,7 @@ export const COMMANDS: Command[] = [
   { id: 'file.save', label: 'Save', keys: ['Ctrl+S'], run: () => void D.save(), enabled: hasDoc },
   { id: 'file.saveAs', label: 'Save As…', keys: ['Ctrl+Shift+S'], run: () => void D.save(get().activeId, true), enabled: hasDoc },
   { id: 'file.export', label: 'Export As…', keys: ['Ctrl+Alt+Shift+W'], run: () => set({ dialog: { kind: 'export' } }), enabled: hasDoc },
+  { id: 'file.exportPresets', label: 'Export with Presets…', keys: ['Ctrl+Shift+Alt+E'], run: () => set({ dialog: { kind: 'exportPresets' } }), enabled: hasDoc },
 
   // Edit
   { id: 'edit.undo', label: 'Undo', keys: ['Ctrl+Z'], run: () => (T.transforming() ? T.cancelTransform() : D.undo()), enabled: () => T.transforming() || canUndo() },

@@ -1601,6 +1601,45 @@ await check('Align and Distribute selected layers; Ctrl+E merges the selection; 
   return 'aligned, distributed, merged, deleted'
 })
 
+const pngSize = (path) => {
+  const b = readFileSync(path)
+  return [b.readUInt32BE(16), b.readUInt32BE(20), b[24]]
+}
+
+await check('Export As with Scale; Export with Presets writes one correctly sized file per preset', async () => {
+  await closeAllClean()
+  await newDoc(400, 300)
+  await selectRect(0, 0, 200, 300)
+  await A('fillWith', '#ff0000')
+  await A('deselect')
+  const half = join(work, 'half.png')
+  expect(await D('exportTo', half, 'png', 1, { scale: 0.5 }), 'export 50%')
+  const [hw, hh] = pngSize(half)
+  expect(hw === 200 && hh === 150, `50% export is ${hw}×${hh}`)
+  const out = join(work, 'presets')
+  mkdirSync(out, { recursive: true })
+  const presets = [
+    { id: 'a', name: 'PNG @2x', format: 'png', quality: 100, scale: 200, maxSide: 0, suffix: '@2x', sixteenBit: false, enabled: true },
+    { id: 'b', name: 'JPEG web', format: 'jpeg', quality: 80, scale: 100, maxSide: 100, suffix: '-web', sixteenBit: false, enabled: true },
+    { id: 'c', name: 'TIFF', format: 'tiff', quality: 100, scale: 100, maxSide: 0, suffix: '', sixteenBit: false, enabled: true }
+  ]
+  const files = await D('exportWithPresets', out, presets)
+  const names = files.map((f) => f.replace(/^.*[\\/]/, ''))
+  expect(names.join() === 'Test@2x.png,Test-web.jpg,Test.tif', `files ${names}`)
+  const [w2, h2] = pngSize(join(out, 'Test@2x.png'))
+  expect(w2 === 800 && h2 === 600, `@2x is ${w2}×${h2}`)
+  await openOne(join(out, 'Test-web.jpg'))
+  let d = await doc()
+  expect(d.width === 100 && d.height === 75, `web jpeg ${d.width}×${d.height}`)
+  const left = await px(20, 30)
+  const right = await px(80, 30)
+  expect(near(left, [255, 0, 0, 255], 12) && near(right, [255, 255, 255, 255], 12), `jpeg pixels ${left} ${right}`)
+  await openOne(join(out, 'Test.tif'))
+  d = await doc()
+  expect(d.width === 400 && d.height === 300 && near(await px(10, 10), [255, 0, 0, 255], 0), `tiff ${d.width}×${d.height}`)
+  return `${names.join(', ')}`
+})
+
 await check('tool groups: rail shows one slot per group; right-click lists the group', async () => {
   await win.keyboard.press('o')
   const slot = win.locator('.tool-btn.active')

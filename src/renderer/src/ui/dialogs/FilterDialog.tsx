@@ -85,6 +85,7 @@ export function FilterDialog({ kind }: { kind: FilterKind }) {
   const put = (id: string, x: number | boolean | string) => setV((o) => ({ ...o, [id]: x }))
   return (
     <Modal
+      preview
       title={spec.title}
       onClose={close}
       onSubmit={ok}

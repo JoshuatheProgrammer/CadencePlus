@@ -101,6 +101,10 @@ function registerIpc(): void {
     const r = await dialog.showSaveDialog(win(e), { title: 'Export As', defaultPath: `${name}.${ext}`, filters: [{ name: ext.toUpperCase(), extensions: [ext] }] })
     return r.canceled || !r.filePath ? null : r.filePath
   })
+  ipcMain.handle('dialog:folder', async (e, title: string) => {
+    const r = await dialog.showOpenDialog(win(e), { title, properties: ['openDirectory', 'createDirectory'] })
+    return r.canceled || !r.filePaths[0] ? null : r.filePaths[0]
+  })
   ipcMain.handle('fs:readFile', async (_e, path: string) => new Uint8Array(await fsp.readFile(path)))
   ipcMain.handle('fs:writeFile', (_e, path: string, data: Uint8Array, backup: boolean) => writeAtomic(path, data, backup))
   ipcMain.handle('shell:showInFolder', (_e, path: string) => shell.showItemInFolder(path))

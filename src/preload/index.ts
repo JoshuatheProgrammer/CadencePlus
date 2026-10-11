@@ -15,6 +15,7 @@ const api: CadencePlusApi = {
   openDialog: () => ipcRenderer.invoke('dialog:open'),
   saveDocumentDialog: (n) => ipcRenderer.invoke('dialog:saveDocument', n),
   exportDialog: (n, ext) => ipcRenderer.invoke('dialog:export', n, ext),
+  folderDialog: (t) => ipcRenderer.invoke('dialog:folder', t),
   readFile: (p) => ipcRenderer.invoke('fs:readFile', p),
   writeFile: (p, d, b = false) => ipcRenderer.invoke('fs:writeFile', p, d, b),
   pathForFile: (f) => webUtils.getPathForFile(f),

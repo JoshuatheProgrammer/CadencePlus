@@ -1540,3 +1540,62 @@
 .layer-row.selected {
   background: color-mix(in srgb, var(--c-select) 60%, transparent);
 }
+
+/* ---------- Export presets ---------- */
+.presets {
+  display: flex;
+  gap: 14px;
+  min-height: 280px;
+}
+.preset-list {
+  flex: 0 0 250px;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius);
+  background: var(--c-inset);
+  padding: 4px 0;
+}
+.preset-item {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  column-gap: 8px;
+  align-items: center;
+  padding: 5px 10px;
+  cursor: default;
+}
+.preset-item .note {
+  grid-column: 2;
+  font-size: var(--fs-sm);
+}
+.preset-item:hover {
+  background: var(--c-panel-2);
+}
+.preset-item.selected {
+  background: var(--c-select);
+}
+.preset-item.selected .preset-name {
+  color: var(--c-accent);
+}
+.preset-tools {
+  margin-top: auto;
+  display: flex;
+  gap: 6px;
+  padding: 8px 8px 4px;
+}
+.preset-form {
+  flex: 1;
+  min-width: 0;
+  align-content: start;
+}
+
+/* Dialogs that preview on the canvas: no dimming, docked beside the image (the canvas stays inert) */
+.modal-back.preview {
+  background: transparent;
+  align-items: flex-start;
+  justify-content: flex-end;
+  padding: 92px 330px 0 0;
+}
+.modal-back.preview .modal {
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6), 0 0 0 1px var(--c-border-strong);
+}

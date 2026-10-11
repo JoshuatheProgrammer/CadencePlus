@@ -8,7 +8,7 @@ import { isWideGamut, matchesWorkingSpace, parseIcc, convertPixels, type IccProf
 import { collectTileIds, createDocument, docColor, uid, type DocColor, type ImageDocument } from '@core/model'
 import { decodePng, pngInfo } from '@core/png'
 import { collectMaskIds } from '@core/selection'
-import { ctx2d, withFormat, type PixelFormat } from './format'
+import { ctx2d, pixelCanvas, withFormat, type PixelFormat } from './format'
 import { renderComposite } from './render'
 import { getMask, getTile, putMask, putTile, tilesFromCanvas } from './tiles'
 
@@ -281,6 +281,32 @@ export interface ExportOptions {
   matte?: string
   /** 16-bit documents: write 16 bits/channel (PNG, TIFF). */
   sixteenBit?: boolean
+  /** Output size relative to the document (1 = actual pixels). Not used for PSD. */
+  scale?: number
+}
+
+/**
+ * The flattened image at `scale`, in the document's format. Downscaling
+ * halves in steps first so large reductions stay smooth.
+ */
+export function scaledComposite(doc: ImageDocument, scale = 1, key = 'export'): OffscreenCanvas {
+  const comp = renderComposite(doc, key)
+  if (Math.abs(scale - 1) < 1e-6) return comp
+  const w = Math.max(1, Math.round(doc.width * scale))
+  const h = Math.max(1, Math.round(doc.height * scale))
+  let src: OffscreenCanvas = comp
+  while (src.width / 2 >= w * 1.5 && src.height / 2 >= 1) {
+    const half = pixelCanvas(Math.ceil(src.width / 2), Math.ceil(src.height / 2))
+    const hg = ctx2d(half)
+    hg.imageSmoothingQuality = 'high'
+    hg.drawImage(src, 0, 0, half.width, half.height)
+    src = half
+  }
+  const out = pixelCanvas(w, h)
+  const g = ctx2d(out)
+  g.imageSmoothingQuality = 'high'
+  g.drawImage(src, 0, 0, w, h)
+  return out
 }
 
 /**
@@ -294,20 +320,20 @@ export async function exportImage(doc: ImageDocument, format: ExportFormat, qual
 /** Like exportImage, plus a note on anything the format could not carry (PSD). */
 export async function exportFile(doc: ImageDocument, format: ExportFormat, quality: number, opts: ExportOptions = {}): Promise<{ bytes: Uint8Array; note: string | null }> {
   if (format === 'psd') return (await import('./formats')).exportPsd(doc)
-  if (format === 'tiff') return { bytes: await (await import('./formats')).exportTiff(doc, !!opts.sixteenBit), note: null }
+  if (format === 'tiff') return { bytes: await (await import('./formats')).exportTiff(doc, !!opts.sixteenBit, opts.scale ?? 1), note: null }
   return { bytes: await encodeFlat(doc, format, quality, opts), note: null }
 }
 
 async function encodeFlat(doc: ImageDocument, format: 'png' | 'jpeg' | 'webp', quality: number, opts: ExportOptions): Promise<Uint8Array> {
   const f = docColor(doc)
   const src = withFormat(f, () => {
-    const comp = renderComposite(doc, 'export')
+    const comp = scaledComposite(doc, opts.scale ?? 1)
     if (format === 'png' && f.depth === 16 && opts.sixteenBit) return comp
-    const c = new OffscreenCanvas(doc.width, doc.height)
+    const c = new OffscreenCanvas(comp.width, comp.height)
     const g = c.getContext('2d', { colorSpace: f.space })!
     if (format === 'jpeg') {
       g.fillStyle = opts.matte ?? '#ffffff'
-      g.fillRect(0, 0, doc.width, doc.height)
+      g.fillRect(0, 0, c.width, c.height)
     }
     g.drawImage(comp, 0, 0)
     return c
