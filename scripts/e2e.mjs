@@ -79,8 +79,12 @@ const results = []
 initializeCanvas(() => { throw new Error('no canvas in Node') }, (width, height) => ({ width, height, data: new Uint8ClampedArray(width * height * 4) }))
 // E2E_ONLY=regex runs just the matching checks (plus the final error check).
 const only = process.env.E2E_ONLY ? new RegExp(process.env.E2E_ONLY, 'i') : null
+let running = ''
+win.on('crash', () => console.log(`RENDERER CRASHED during: ${running}`))
+app.on('close', () => running && console.log(`APP CLOSED during: ${running}`))
 async function check(name, fn) {
   if (only && !only.test(name) && !/uncaught errors/.test(name)) return
+  running = name
   try {
     const detail = await fn()
     results.push({ name, ok: true, detail: detail ?? '' })
@@ -1542,6 +1546,7 @@ await check('autosave + crash recovery restores unsaved work', async () => {
   const n = await ev(() => window.__cadencePlus.R.autosaveNow())
   expect(n === 1, `autosaved ${n}`)
   // Simulate a crash: kill the whole process tree without letting the app close.
+  running = '' // the close below is intended
   execSync(`taskkill /PID ${app.process().pid} /T /F`, { stdio: 'ignore' })
   await new Promise((r) => setTimeout(r, 1000))
   const app2 = await electron.launch({

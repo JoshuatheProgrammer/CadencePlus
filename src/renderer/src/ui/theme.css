@@ -1463,6 +1463,7 @@
 }
 .color-range .form-grid {
   flex: 1;
+  min-width: 0;
 }
 .color-range-previews {
   display: flex;
@@ -1477,8 +1478,8 @@
   gap: 4px;
 }
 .color-range-previews canvas {
-  max-width: 220px;
-  max-height: 140px;
+  max-width: 200px;
+  max-height: 130px;
   border: 1px solid var(--c-border);
   background: var(--c-inset);
 }

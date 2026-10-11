@@ -13,7 +13,7 @@ import { maskFromCanvas } from '../../engine/selection'
 import * as A from '../../state/image-actions'
 import { activeDoc, get, set } from '../../state/store'
 
-const PREVIEW = 220
+const PREVIEW = 200
 
 /** Selected amount → alpha of a canvas the size of `src`. */
 export function colorRangeCanvas(src: OffscreenCanvas, spec: RangeSpec): OffscreenCanvas {
@@ -85,7 +85,7 @@ export function ColorRangeDialog() {
       title="Color Range"
       onClose={close}
       onSubmit={ok}
-      width={560}
+      width={600}
       actions={
         <>
           <button className="btn" onClick={close}>

@@ -45,8 +45,8 @@ export const IconPolyLasso = I(
 )
 export const IconDodge = I(
   <>
-    <circle cx="10" cy="5.5" r="3.6" />
-    <path d="M7.4 8.1L2.5 13" />
+    <circle cx="8" cy="5.5" r="3.8" />
+    <path d="M8 9.3v5.2" />
   </>
 )
 export const IconBurn = I(<path d="M2.5 13.5c1-2.6 3.2-4.3 5.6-4.4M8.1 9.1c1.9-.1 3.6-1.3 4.4-3.1.6-1.3.5-3-.4-4-1.8.4-3 1.3-3.8 2.6-.9 1.4-1.1 3-.2 4.5z" />)
