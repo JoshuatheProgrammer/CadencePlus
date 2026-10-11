@@ -1785,6 +1785,39 @@ await check('autosave + crash recovery restores unsaved work', async () => {
   }
 })
 
+await check("closing the window with unsaved changes asks first (Cancel keeps it, Don't Save closes)", async () => {
+  const app3 = await electron.launch({
+    args: [root],
+    env: { ...process.env, CADENCE_PLUS_USER_DATA: join(work, 'user3'), CADENCE_PLUS_TEST: '1', CADENCE_PLUS_NO_MAXIMIZE: '1' }
+  })
+  let closed = false
+  app3.on('close', () => (closed = true))
+  try {
+    const w3 = await app3.firstWindow()
+    await w3.waitForFunction(() => !!window.__cadencePlus)
+    await w3.evaluate(() => {
+      const { D, A } = window.__cadencePlus
+      D.newDocument({ name: 'Unsaved', width: 40, height: 40, resolution: 72, background: 'white' })
+      A.fillWith('#ff0000')
+    })
+    await w3.waitForTimeout(300)
+    const closeWindow = () => app3.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]?.close())
+    await closeWindow()
+    await w3.waitForSelector('.modal:has-text("Unsaved changes")', { timeout: 5000 })
+    await w3.click('.modal button:has-text("Cancel")')
+    await w3.waitForTimeout(500)
+    expect(!closed && (await w3.evaluate(() => window.__cadencePlus.get().docs.length)) === 1, 'Cancel did not keep the window and document')
+    await closeWindow()
+    await w3.waitForSelector('.modal:has-text("Unsaved changes")', { timeout: 5000 })
+    await w3.click('.modal button.danger')
+    for (let i = 0; i < 50 && !closed; i++) await new Promise((r) => setTimeout(r, 100))
+    expect(closed, "Don't Save did not close the app")
+    return "asked twice; Cancel kept it open; Don't Save closed it"
+  } finally {
+    if (!closed) await app3.close().catch(() => {})
+  }
+})
+
 const w = Math.max(...results.map((r) => r.name.length))
 for (const r of results) console.log(`${r.ok ? 'PASS' : 'FAIL'}  ${r.name.padEnd(w)}  ${r.detail}`)
 const failed = results.filter((r) => !r.ok).length
