@@ -3,7 +3,7 @@ import { formatZoom } from '@core/view'
 import { closeDocument, displayName } from '../../state/doc-actions'
 import { isDirty, set, useEditor } from '../../state/store'
 import { IconClose } from '../icons'
-import { token, tokenPx } from '../tokens'
+import { token, tokenPx } from '@cadence/ui/tokens'
 import { Viewport } from './Viewport'
 
 /** Nice ruler step (document pixels) so labels are at least `minPx` apart. */

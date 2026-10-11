@@ -7,9 +7,9 @@ import { poolCanvas } from '../../engine/tiles'
 import * as A from '../../state/image-actions'
 import { activeDoc, set, useEditor } from '../../state/store'
 import { keysFor } from '../../state/commands'
-import { ScrubNumber, showContextMenu } from '../components'
+import { ScrubNumber, showContextMenu } from '@cadence/ui/components'
 import { IconChevronDown, IconChevronRight, IconFolder, IconText, IconEye, IconEyeOff, IconFx, IconLock, IconMask, IconNewLayer, IconTrash, IconUnlock, IconFillLayer } from '../icons'
-import { checkerTile } from '../tokens'
+import { checkerTile } from '@cadence/ui/tokens'
 
 const THUMB = 34
 

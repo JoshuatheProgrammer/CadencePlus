@@ -1,0 +1,18 @@
+{
+  "name": "@cadence/ui",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Cadence design system: tokens, base stylesheet and shared React widgets",
+  "type": "module",
+  "exports": {
+    "./base.css": "./src/base.css",
+    "./components": "./src/components.tsx",
+    "./Tooltip": "./src/Tooltip.tsx",
+    "./tokens": "./src/tokens.ts"
+  },
+  "peerDependencies": {
+    "react": "^19.3.0",
+    "zustand": "^5.0.15",
+    "dockview-react": "^8.4.1"
+  }
+}

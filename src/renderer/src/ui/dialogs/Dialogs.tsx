@@ -9,7 +9,7 @@ import { activeDoc, get, set, toast, useEditor, type Dialog } from '../../state/
 import { histogram } from '@core/lut'
 import { layerCanvas } from '../../engine/pixels'
 import { AdjustmentEditor } from '../AdjustmentEditor'
-import { Modal, NumberInput, SliderField } from '../components'
+import { Modal, NumberInput, SliderField } from '@cadence/ui/components'
 import { Logo, Wordmark } from '../icons'
 import { ShortcutsDialog } from './ShortcutsDialog'
 

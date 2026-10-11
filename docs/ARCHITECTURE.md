@@ -11,15 +11,23 @@ Cadence+ is an Electron image editor for Windows, built on the same stack and pr
 ## Layers of the code
 
 ```
+packages/ui/         @cadence/ui — the design system shared with Cadence (see docs/MONOREPO.md)
+  base.css             Tokens, global rules, form controls, focus ring, scrollbars, docking,
+                       menus, tooltips, buttons, scrub numbers, toasts
+  components.tsx       Context menu, ScrubNumber, SliderField, NumberInput, Modal
+  Tooltip.tsx, tokens.ts  Styled tooltips; CSS tokens for canvas drawing
+packages/core/       @cadence/core — framework-free logic shared with Cadence
+  history.ts           Snapshot undo/redo (generic) with coalescing and a step limit
+  color.ts             Hex / RGB / HSV
 src/core/            Pure TypeScript, no DOM. Unit-tested (tests/core.test.ts).
   model.ts             Document, layers, tile maps (pixels referenced by id)
   edit.ts              Every edit as a function on an Immer draft; EditError
-  history.ts           Snapshot undo/redo with coalescing and a step limit
   selection.ts         Selections as data: ordered add/subtract/intersect/invert/feather steps
   adjustments.ts       Adjustment definitions → filter strings
   flood.ts             Magic wand / bucket colour masks
   view.ts              Zoom steps, fit/fill, screen ↔ document maths
-  color.ts, format.ts  Colour conversion; the .cadenceimg container
+  icc.ts, png.ts       ICC profile parsing and conversion; own PNG decoder (16-bit)
+  format.ts            The .cadenceimg container
 src/renderer/src/engine/
   tiles.ts             Immutable tile store (ImageBitmap), slicing, GC
   render.ts            The compositor (viewport, thumbnails, navigator, export)
@@ -28,8 +36,10 @@ src/renderer/src/engine/
   brush.ts             Round brush engine with stroke buffer
   selection.ts         Selection → mask, bounds, marching-ants edges
   io.ts                Decode, .cadenceimg save/load, export
+  formats.ts           PSD (ag-psd), TIFF (UTIF + own writer), camera RAW (libraw-wasm)
 src/renderer/src/state/  Zustand store, edit()/history actions, commands + keymap, tools
-src/renderer/src/ui/     App frame, canvas (viewport, rulers, overlay, tool handlers), panels, dialogs
+src/renderer/src/ui/     App frame, canvas (viewport, rulers, overlay, tool handlers), panels, dialogs;
+                         theme.css holds only image-editor surfaces on top of @cadence/ui/base.css
 ```
 
 ## Key decisions

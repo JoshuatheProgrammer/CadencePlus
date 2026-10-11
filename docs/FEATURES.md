@@ -121,6 +121,6 @@ Suites: 58 unit (`npm test`) · 65 end-to-end (`npm run e2e`), all passing.
 | 2 ✅ | Layer masks and groups, Free Transform, move selected pixels, Type tool, shapes, clone stamp/healing, Levels/Curves (WebGL), autosave/recovery, rebindable shortcuts |
 | 3 ✅ | Colour management: 16-bit/float pipeline, ICC profiles, soft-proofing |
 | 4 ✅ | PSD import/export, TIFF, camera RAW (RAW 🟡: verified on synthetic DNG only) |
-| 5 | Monorepo with Cadence (shared `ui/` and `core/` packages) |
+| 5 🟡 | Monorepo with Cadence: shared `@cadence/ui` and `@cadence/core` packages exist as npm workspaces and Cadence+ is built from them. Cadence itself has not been moved in yet (its repository was under active development in another session); the migration steps are in `docs/MONOREPO.md`. |
 | 6 | Retouching tools and filters: dodge/burn, sponge, smudge, blur/sharpen tools, history brush, polygonal lasso, quick mask, Color Range, Unsharp Mask, noise, motion blur, high pass |
 | 7 | Layer styles (drop shadow, stroke, glows, colour overlay), multi-layer selection, export presets (scale, format batches) |

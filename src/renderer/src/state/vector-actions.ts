@@ -4,7 +4,7 @@
  */
 import { paramsForRect, type TransformParams } from '@core/affine'
 import * as E from '@core/edit'
-import { dropLast } from '@core/history'
+import { dropLast } from '@cadence/core/history'
 import { activeLayer, isVector, uid, type Rect } from '@core/model'
 import type { ShapeData, TextData, TextStyle } from '@core/vector'
 import { layoutText, vectorSize } from '../engine/vector'

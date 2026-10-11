@@ -4,7 +4,7 @@
  */
 import { create } from 'zustand'
 import type { AdjustmentKind } from '@core/adjustments'
-import type { History } from '@core/history'
+import type { History } from '@cadence/core/history'
 import type { ImageDocument, Rect } from '@core/model'
 import type { SelMode } from '@core/selection'
 import type { View } from '@core/view'

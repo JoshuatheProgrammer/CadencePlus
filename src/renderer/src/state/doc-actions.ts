@@ -5,7 +5,7 @@
 import type { Draft } from 'immer'
 import { EditError } from '@core/edit'
 import { PROJECT_EXTENSION } from '@core/format'
-import { apply, createHistory, jumpTo, redo as hRedo, replace, undo as hUndo } from '@core/history'
+import { apply, createHistory, jumpTo, redo as hRedo, replace, undo as hUndo } from '@cadence/core/history'
 import { collectTileIds, createDocument, DEFAULT_COLOR, docColor, type DocColor, type ImageDocument } from '@core/model'
 import { collectMaskIds } from '@core/selection'
 import { clampZoom, fillView, fitView, formatZoom, nextZoomStep, type View } from '@core/view'

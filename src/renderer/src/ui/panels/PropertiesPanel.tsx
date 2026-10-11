@@ -9,7 +9,7 @@ import { docColor, type ImageDocument } from '@core/model'
 import { renderComposite } from '../../engine/render'
 import { AdjustmentEditor, type Histograms } from '../AdjustmentEditor'
 import { ShapeProps, TextContentField, TextStyleControls } from '../VectorControls'
-import { ScrubNumber } from '../components'
+import { ScrubNumber } from '@cadence/ui/components'
 import { ColorField } from './ColorPanel'
 
 function NameField({ id, name, disabled }: { id: string; name: string; disabled: boolean }) {

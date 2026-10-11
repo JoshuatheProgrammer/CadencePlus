@@ -5,7 +5,7 @@ import * as A from '../state/image-actions'
 import { set, setToolOption, useEditor, type ToolOptions } from '../state/store'
 import { toolDef } from '../state/tools'
 import { cancelTransform, commitTransform, updateTransform } from '../state/transform-actions'
-import { NumberInput, SliderField } from './components'
+import { NumberInput, SliderField } from '@cadence/ui/components'
 import { ShapeOptions, TextStyleControls } from './VectorControls'
 import { IconCheck, IconClose, IconTransform } from './icons'
 

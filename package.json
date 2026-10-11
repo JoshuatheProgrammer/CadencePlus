@@ -2,9 +2,12 @@
   "name": "cadence-plus",
   "productName": "Cadence+",
   "version": "0.1.0",
-  "description": "Cadence+ — a professional image editor, sibling of Cadence",
+  "description": "Cadence+ \u2014 a professional image editor, sibling of Cadence",
   "private": true,
   "main": "out/main/index.js",
+  "workspaces": [
+    "packages/*"
+  ],
   "scripts": {
     "dev": "electron-vite dev",
     "build": "electron-vite build",
@@ -17,6 +20,8 @@
     "perf": "node scripts/perf.mjs"
   },
   "dependencies": {
+    "@cadence/core": "0.1.0",
+    "@cadence/ui": "0.1.0",
     "ag-psd": "^31.0.3",
     "dockview-react": "^8.4.1",
     "immer": "^11.1.21",

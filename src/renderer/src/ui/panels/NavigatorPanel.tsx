@@ -5,7 +5,7 @@ import { poolCanvas } from '../../engine/tiles'
 import { setView, zoomIn, zoomOut } from '../../state/doc-actions'
 import { activeDocState, useEditor } from '../../state/store'
 import { IconZoom, IconZoomOut } from '../icons'
-import { checkerTile, token } from '../tokens'
+import { checkerTile, token } from '@cadence/ui/tokens'
 
 const toSlider = (z: number) => Math.log(z / MIN_ZOOM) / Math.log(MAX_ZOOM / MIN_ZOOM)
 const fromSlider = (t: number) => MIN_ZOOM * Math.pow(MAX_ZOOM / MIN_ZOOM, t)

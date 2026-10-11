@@ -7,8 +7,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { ADJUSTMENTS, type Adjustment } from '@core/adjustments'
 import { CHANNELS, curveTable, IDENTITY_CURVE, type Channel } from '@core/lut'
-import { SliderField } from './components'
-import { token } from './tokens'
+import { SliderField } from '@cadence/ui/components'
+import { token } from '@cadence/ui/tokens'
 
 export type Histograms = Record<Channel, Uint32Array> | null
 

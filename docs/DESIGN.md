@@ -3,8 +3,8 @@
 Cadence+ is the image-editing sibling of Cadence. It uses the same stack (Electron 44, React 19, dockview 8, Zustand + Immer, electron-vite) and the same product principles: no fake controls, honest reporting, sources never modified, one authoritative model.
 
 ## Theme
-- **Palette:** identical to Cadence (graphite + ice blue `#69B7FF`). These tokens live in `src/renderer/src/ui/theme.css` and must stay in sync with Cadence.
-- **Image-editor tokens (new):** `--c-pasteboard` (`#1F1F1F`, neutral grey around the document), `--c-doc-edge`, `--checker-a/b/size` (the hue-free transparency checkerboard), `--pixel-grid` (shown at ≥ 800%), `--ruler-*`, `--guide` and `--bbox`. Canvas code reads them through `ui/tokens.ts` (`token()` and `checkerTile()`).
+- **Palette:** identical to Cadence (graphite + ice blue `#69B7FF`). These tokens live in the shared package `packages/ui/src/base.css` (`@cadence/ui`), with the widgets both apps use.
+- **Image-editor tokens (new):** `--c-pasteboard` (`#1F1F1F`, neutral grey around the document), `--c-doc-edge`, `--checker-a/b/size` (the hue-free transparency checkerboard), `--pixel-grid` (shown at ≥ 800%), `--ruler-*`, `--guide` and `--bbox`. They are defined in `src/renderer/src/ui/theme.css`; canvas code reads them through `@cadence/ui/tokens` (`token()` and `checkerTile()`).
 - **Style rules (shared):** 12 px text, 24 px controls, 3–5 px radii, 1.25 px line icons, hover is a brightness change, and the focus ring is 1 px ice blue. No glow, glass effects or decorative gradients.
 - **Mark:** the same rounded-square frame as Cadence, with three stacked ice-blue layers at the 1 / 0.7 / 0.45 ramp in place of Cadence's three track bars. The wordmark is "Cadence" with an accent-coloured "+".
 

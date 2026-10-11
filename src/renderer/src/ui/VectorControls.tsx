@@ -7,7 +7,7 @@ import type { ShapeData, TextStyle } from '@core/vector'
 import { availableFonts } from '../engine/vector'
 import { commitText, editText, setTextStyle, updateShape, updateText } from '../state/vector-actions'
 import { setToolOption, useEditor } from '../state/store'
-import { NumberInput } from './components'
+import { NumberInput } from '@cadence/ui/components'
 import { ColorField } from './panels/ColorPanel'
 
 const WEIGHTS: [number, string][] = [

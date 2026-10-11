@@ -6,7 +6,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { COMMANDS, comboOf, defaultKeysFor, keysFor, resetAllKeys, setKeysFor } from '../../state/commands'
 import { set, useEditor } from '../../state/store'
-import { Modal } from '../components'
+import { Modal } from '@cadence/ui/components'
 
 const GROUPS: Record<string, string> = {
   file: 'File',

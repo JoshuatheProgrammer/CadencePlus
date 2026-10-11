@@ -1,0 +1,13 @@
+{
+  "name": "@cadence/core",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Framework-free logic shared by Cadence apps: undo history, colour maths",
+  "type": "module",
+  "exports": {
+    "./*": "./src/*.ts"
+  },
+  "peerDependencies": {
+    "immer": "^11.1.21"
+  }
+}

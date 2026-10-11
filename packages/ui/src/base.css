@@ -1,0 +1,440 @@
+@import 'dockview-react/dist/styles/dockview.css';
+
+/* ============================================================================
+   Cadence design system — graphite & ice blue
+   Shared by Cadence (video) and Cadence+ (image). Tokens, global element
+   rules and the widgets both apps use: form controls, focus ring,
+   scrollbars, docking, menus, tooltips, buttons, scrub numbers, toasts.
+   App stylesheets add their own tokens and surfaces on top.
+   ========================================================================== */
+:root {
+  /* Palette */
+  --c-app: #101114;
+  --c-panel: #191b20;
+  --c-raised: #23262d;
+  --c-border: #30343d;
+  --c-text: #e8ecf2;
+  --c-text-2: #929baa;
+  --c-accent: #69b7ff;
+  --c-select: #203b55;
+
+  /* Derived surfaces */
+  --c-inset: #0d0e11; /* input wells */
+  --c-panel-2: #1d1f25; /* section headers inside panels */
+  --c-raised-hover: #2a2e36;
+  --c-raised-press: #31353f;
+  --c-border-strong: #3c414c;
+  --c-text-3: #687180;
+  --c-text-disabled: #4f5662;
+  --c-accent-hover: #8cc8ff;
+  --c-accent-press: #4fa3f0;
+  --c-accent-ink: #07182a; /* text on accent fills */
+  --c-accent-soft: rgba(105, 183, 255, 0.13);
+  --c-focus: #69b7ff;
+  --c-danger: #f26d6d;
+  --c-warn: #e6b450;
+  --c-ok: #5cc48d;
+  --c-overlay: rgba(4, 5, 7, 0.62);
+  --c-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+
+  /* Shape & type */
+  --radius: 3px;
+  --radius-lg: 5px;
+  --font: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif;
+  --mono: 'Cascadia Mono', 'Cascadia Code', Consolas, monospace;
+  --fs: 12px;
+  --fs-sm: 11px;
+  --control-h: 24px;
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  background: var(--c-app);
+  color: var(--c-text);
+  font-family: var(--font);
+  font-size: var(--fs);
+  line-height: 1.35;
+  user-select: none;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+}
+
+/* ---------- Form controls ---------- */
+input,
+select,
+textarea {
+  font: inherit;
+  color: var(--c-text);
+  background: var(--c-inset);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius);
+  padding: 3px 6px;
+  outline: none;
+  user-select: text;
+  min-height: var(--control-h);
+  transition: border-color 0.08s;
+}
+input:hover:not(:disabled),
+select:hover:not(:disabled),
+textarea:hover:not(:disabled) {
+  border-color: var(--c-border-strong);
+}
+input:focus,
+select:focus,
+textarea:focus {
+  border-color: var(--c-accent);
+}
+input:disabled,
+select:disabled,
+textarea:disabled {
+  color: var(--c-text-disabled);
+  border-color: var(--c-border);
+}
+input[type='checkbox'] {
+  accent-color: var(--c-accent);
+  min-height: 0;
+  width: 13px;
+  height: 13px;
+  margin: 0;
+}
+input[type='range'] {
+  -webkit-appearance: none;
+  appearance: none;
+  background: transparent;
+  border: none;
+  min-height: 16px;
+  padding: 0;
+}
+input[type='range']::-webkit-slider-runnable-track {
+  height: 3px;
+  background: var(--c-raised-press);
+  border-radius: 2px;
+}
+input[type='range']::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 11px;
+  height: 11px;
+  margin-top: -4px;
+  border-radius: 50%;
+  background: var(--c-accent);
+  border: 2px solid var(--c-panel);
+}
+input[type='range']:hover::-webkit-slider-thumb {
+  background: var(--c-accent-hover);
+}
+input[type='range']:focus-visible::-webkit-slider-thumb {
+  box-shadow: 0 0 0 2px var(--c-accent-soft);
+}
+
+/* Keyboard focus: one consistent ring */
+:focus {
+  outline: none;
+}
+:focus-visible {
+  outline: 1px solid var(--c-focus);
+  outline-offset: 1px;
+}
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: none;
+}
+
+/* ---------- Scrollbars ---------- */
+::-webkit-scrollbar {
+  width: 9px;
+  height: 9px;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--c-raised-press);
+  border-radius: 5px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background-color: var(--c-border-strong);
+}
+::-webkit-scrollbar-track,
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* ---------- Docking ---------- */
+.dockview-theme-cadence {
+  --dv-paneview-active-outline-color: var(--c-accent);
+  --dv-tabs-and-actions-container-font-size: 12px;
+  --dv-tabs-and-actions-container-height: 27px;
+  --dv-drag-over-background-color: rgba(105, 183, 255, 0.14);
+  --dv-drag-over-border-color: var(--c-accent);
+  --dv-tabs-container-scrollbar-color: var(--c-raised-press);
+  --dv-icon-hover-background-color: var(--c-raised-hover);
+  --dv-group-view-background-color: var(--c-panel);
+  --dv-tabs-and-actions-container-background-color: var(--c-app);
+  --dv-activegroup-visiblepanel-tab-background-color: var(--c-panel);
+  --dv-activegroup-hiddenpanel-tab-background-color: var(--c-app);
+  --dv-inactivegroup-visiblepanel-tab-background-color: var(--c-panel);
+  --dv-inactivegroup-hiddenpanel-tab-background-color: var(--c-app);
+  --dv-tab-divider-color: var(--c-app);
+  --dv-activegroup-visiblepanel-tab-color: var(--c-text);
+  --dv-activegroup-hiddenpanel-tab-color: var(--c-text-3);
+  --dv-inactivegroup-visiblepanel-tab-color: var(--c-text-2);
+  --dv-inactivegroup-hiddenpanel-tab-color: var(--c-text-3);
+  --dv-separator-border: transparent;
+  --dv-paneview-header-border-color: var(--c-border);
+  --dv-sash-color: transparent;
+  --dv-active-sash-color: var(--c-accent);
+  --dv-background-color: var(--c-app);
+  background: var(--c-app);
+}
+.dockview-theme-cadence .dv-groupview {
+  border-radius: var(--radius);
+  overflow: hidden;
+  border: 1px solid var(--c-border);
+}
+.dockview-theme-cadence .dv-groupview.dv-active-group {
+  border-color: var(--c-border-strong);
+}
+.dockview-theme-cadence .dv-tab {
+  padding: 0 11px;
+  font-size: var(--fs);
+}
+.dockview-theme-cadence .dv-tab:hover {
+  color: var(--c-text);
+}
+.dockview-theme-cadence .dv-tab.dv-active-tab {
+  box-shadow: inset 0 -2px 0 var(--c-border-strong);
+}
+.dockview-theme-cadence .dv-groupview.dv-active-group .dv-tab.dv-active-tab {
+  box-shadow: inset 0 -2px 0 var(--c-accent);
+}
+
+/* ---------- Menus (title bar and context) ---------- */
+.menu-pop {
+  /* Menus open from the title bar (a window-drag region); without this Windows
+     treats them as drag area and they receive no hover or clicks. */
+  -webkit-app-region: no-drag;
+  position: fixed;
+  z-index: 1000;
+  min-width: 248px;
+  background: var(--c-raised);
+  border: 1px solid var(--c-border-strong);
+  border-radius: var(--radius-lg);
+  padding: 4px;
+  box-shadow: var(--c-shadow);
+}
+.menu-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 9px;
+  min-height: 24px;
+  border-radius: var(--radius);
+  cursor: default;
+  white-space: nowrap;
+  color: var(--c-text);
+}
+.menu-item:hover:not(.disabled) {
+  background: var(--c-select);
+}
+.menu-item:active:not(.disabled) {
+  background: var(--c-accent-press);
+  color: var(--c-accent-ink);
+}
+.menu-item.disabled {
+  color: var(--c-text-disabled);
+}
+.menu-item .check {
+  width: 14px;
+  text-align: center;
+  color: var(--c-accent);
+}
+.menu-item .label {
+  flex: 1;
+}
+.menu-item .kbd {
+  color: var(--c-text-3);
+  font-size: var(--fs-sm);
+}
+.menu-item:hover:not(.disabled) .kbd {
+  color: var(--c-text-2);
+}
+.menu-sep {
+  height: 1px;
+  background: var(--c-border);
+  margin: 4px 6px;
+}
+
+/* ---------- Tooltips ---------- */
+.tooltip {
+  position: fixed;
+  z-index: 2000;
+  max-width: 360px;
+  padding: 4px 8px;
+  background: var(--c-raised);
+  border: 1px solid var(--c-border-strong);
+  border-radius: var(--radius);
+  color: var(--c-text);
+  font-size: var(--fs-sm);
+  line-height: 1.45;
+  white-space: pre-wrap;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
+  pointer-events: none;
+}
+
+/* ---------- Buttons ---------- */
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 24px;
+  height: 24px;
+  padding: 0 4px;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--c-text-2);
+  cursor: default;
+}
+.icon-btn:hover:not(:disabled) {
+  background: var(--c-raised);
+  color: var(--c-text);
+}
+.icon-btn:active:not(:disabled) {
+  background: var(--c-raised-press);
+}
+.icon-btn.active {
+  color: var(--c-accent);
+  background: var(--c-select);
+}
+.icon-btn:disabled {
+  color: var(--c-text-disabled);
+}
+.icon-btn.small {
+  min-width: 20px;
+  height: 20px;
+}
+.btn {
+  height: 26px;
+  padding: 0 13px;
+  border-radius: var(--radius);
+  border: 1px solid var(--c-border-strong);
+  background: var(--c-raised);
+  color: var(--c-text);
+  cursor: default;
+  white-space: nowrap;
+}
+.btn:hover:not(:disabled) {
+  background: var(--c-raised-hover);
+}
+.btn:active:not(:disabled) {
+  background: var(--c-raised-press);
+}
+.btn.primary {
+  background: var(--c-accent);
+  border-color: var(--c-accent);
+  color: var(--c-accent-ink);
+  font-weight: 600;
+}
+.btn.primary:hover:not(:disabled) {
+  background: var(--c-accent-hover);
+  border-color: var(--c-accent-hover);
+}
+.btn.primary:active:not(:disabled) {
+  background: var(--c-accent-press);
+}
+.btn.small {
+  height: 22px;
+  padding: 0 9px;
+}
+.btn:disabled {
+  color: var(--c-text-disabled);
+  background: var(--c-panel-2);
+  border-color: var(--c-border);
+}
+.btn.primary:disabled {
+  color: var(--c-accent-ink);
+  background: var(--c-accent);
+  opacity: 0.4;
+}
+.sep-v {
+  width: 1px;
+  height: 18px;
+  background: var(--c-border);
+  margin: 0 4px;
+}
+
+/* ---------- Scrubbable numbers ---------- */
+.scrub {
+  color: var(--c-accent);
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  cursor: ew-resize;
+  padding: 1px 3px;
+  border-radius: var(--radius);
+  min-width: 34px;
+  display: inline-block;
+}
+.scrub:hover {
+  background: var(--c-raised);
+  color: var(--c-accent-hover);
+}
+.scrub.disabled {
+  color: var(--c-text-disabled);
+  cursor: default;
+  background: none;
+}
+.scrub-input {
+  width: 64px;
+  font-family: var(--mono);
+  min-height: 20px;
+  padding: 1px 4px;
+}
+.unit {
+  color: var(--c-text-3);
+  font-size: var(--fs-sm);
+}
+
+/* ---------- Toasts ---------- */
+.toasts {
+  position: fixed;
+  right: 14px;
+  bottom: 32px;
+  z-index: 950;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-width: 440px;
+}
+.toast {
+  background: var(--c-raised);
+  border: 1px solid var(--c-border-strong);
+  border-left: 3px solid var(--c-accent);
+  padding: 7px 11px;
+  border-radius: var(--radius);
+  box-shadow: var(--c-shadow);
+  white-space: pre-wrap;
+  line-height: 1.45;
+}
+.toast.error {
+  border-left-color: var(--c-danger);
+}
+.toast.warn {
+  border-left-color: var(--c-warn);
+}
+.toast.success {
+  border-left-color: var(--c-ok);
+}

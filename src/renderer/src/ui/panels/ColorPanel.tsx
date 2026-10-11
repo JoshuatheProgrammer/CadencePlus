@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
-import { hexToRgb, hsvToRgb, parseHex, rgbToHex, rgbToHsv, type HSV } from '@core/color'
+import { hexToRgb, hsvToRgb, parseHex, rgbToHex, rgbToHsv, type HSV } from '@cadence/core/color'
 import { get, set, useEditor } from '../../state/store'
-import { NumberInput } from '../components'
+import { NumberInput } from '@cadence/ui/components'
 
 /** HSV picker. Keeps its own hue so dragging through grey doesn't lose it. */
 export function ColorPicker({ value, onChange }: { value: string; onChange: (hex: string) => void }) {
