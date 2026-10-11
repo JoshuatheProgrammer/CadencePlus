@@ -11,7 +11,7 @@ import { dragRect, type SelMode } from '@core/selection'
 import { clampZoom, panBy, zoomAt, type View } from '@core/view'
 import { Stroke } from '../../engine/brush'
 import { layerAlphaAt } from '../../engine/pixels'
-import { clonePixels, healPixels, sourceSnapshot } from '../../engine/clone'
+import { clonePixels, healPixels, sourceSnapshot, spotSource } from '../../engine/clone'
 import { historySource, retouchSource, Smudger, type RetouchKind } from '../../engine/retouch'
 import { floatSize } from '../../engine/transform'
 import { commitText, createShape, editText, moveVector, startNewText, textLayerAt } from '../../state/vector-actions'
@@ -414,6 +414,27 @@ function cloneTool(heal: boolean): Handler {
   }
 }
 
+/** Spot Healing Brush: paint over a blemish; on release it is healed from the best-matching nearby texture. */
+const spotHeal: Handler = (c, p) => {
+  const t = A.paintTarget('heal it')
+  if (!t) return null
+  if (t.kind === 'mask') return toast('The Spot Healing Brush works on pixels. Click the layer thumbnail to target them.', 'warn'), null
+  const o = get().options.spotHeal
+  const snapshot = sourceSnapshot(c.doc, o.sampleAll, t.layer)
+  const stroke = new Stroke(c.doc.width, c.doc.height, '#000000', o, false)
+  // While painting, show the area being healed as a translucent dark wash.
+  const preview = () => set({ stroke: { layerId: t.layer.id, canvas: stroke.canvas, opacity: 0.45, erase: false, rev: stroke.rev } })
+  stroke.add(p.x, p.y, 1)
+  preview()
+  return brushDrag(c, (x, y) => stroke.add(x, y, 1), preview, () => {
+    if (!stroke.bounds) return
+    const off = spotSource(stroke.canvas, snapshot, stroke.bounds)
+    if (!off) return void toast('There is no room around this spot to sample texture from.', 'warn')
+    const px = healPixels(stroke.canvas, snapshot, snapshot, off.dx, off.dy, stroke.bounds, Math.max(2, o.size / 4))
+    A.commitPixels(px, stroke.bounds, stroke.opacity, 'Spot Healing Brush')
+  })
+}
+
 /** Follows a brush drag (coalesced pointer events included) into `add`. */
 function brushDrag(c: ToolContext, add: (x: number, y: number, pressure: number) => void, preview: () => void, done: () => void): Session {
   const pressure = (ev: PointerEvent) => (ev.pointerType === 'pen' ? ev.pressure : 1)
@@ -649,6 +670,7 @@ export const HANDLERS: Partial<Record<ToolId, Handler>> = {
   eraser: paint(true),
   clone: cloneTool(false),
   heal: cloneTool(true),
+  spotHeal,
   historyBrush,
   blur: retouch('blur'),
   sharpen: retouch('sharpen'),

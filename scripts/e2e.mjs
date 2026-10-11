@@ -942,6 +942,8 @@ await check('Healing Brush keeps the destination tone (clone would not)', async 
   await A('deselect')
   await ev(() => window.__cadencePlus.set((s) => ({ options: { ...s.options, heal: { ...s.options.heal, size: 30, hardness: 100, opacity: 100, flow: 100 } } })))
   await win.keyboard.press('j')
+  await win.keyboard.press('Shift+J')
+  expect((await ev(() => window.__cadencePlus.get().tool)) === 'heal', 'Shift+J did not reach the Healing Brush')
   const src = await client(150, 50)
   await win.keyboard.down('Alt')
   await win.mouse.click(src.x, src.y)
@@ -1702,6 +1704,43 @@ await check('Free Transform on a group and on several selected layers (pixels an
   await ev(() => window.__cadencePlus.run('edit.undo'))
   expect(near(await px(Math.round(sqx - 18), Math.round(sqy - 18)), [255, 255, 255, 255]) && near(await px(110, 90), [0, 0, 255, 255]), 'undo did not restore in one step')
   return 'group rotated 180°; pixels + shape scaled ×2 together'
+})
+
+await check('Spot Healing Brush removes a blemish from textured surroundings (no source needed)', async () => {
+  await closeAllClean()
+  await newDoc(200, 160)
+  // Fine horizontal stripes (texture) with a black blot in the middle.
+  await ev(() => {
+    const { A } = window.__cadencePlus
+    for (let y = 0; y < 160; y += 8) {
+      A.addSelectionShape({ kind: 'rect', x: 0, y, w: 200, h: 4 }, 'replace', 'Select')
+      A.fillWith('#8899aa')
+    }
+    A.addSelectionShape({ kind: 'ellipse', x: 92, y: 72, w: 16, h: 16 }, 'replace', 'Select')
+    A.fillWith('#000000')
+    A.deselect()
+  })
+  expect(near(await px(100, 80), [0, 0, 0, 255]), 'blot missing')
+  // J picks the healing group's last-used tool (the Healing Brush, from the check above); Shift+J cycles back.
+  await win.keyboard.press('j')
+  await win.keyboard.press('Shift+J')
+  expect((await ev(() => window.__cadencePlus.get().tool)) === 'spotHeal', 'J / Shift+J did not reach Spot Healing')
+  await setOpt('spotHeal', { size: 26, hardness: 80, opacity: 100, flow: 100 })
+  await drag([[99, 80], [101, 80]])
+  await settle(200)
+  expect((await lastLabel()) === 'Spot Healing Brush', `label ${await lastLabel()}`)
+  // Every pixel of the old blot now looks like the stripes (white or #8899aa), not black.
+  let worst = 0
+  for (let y = 74; y <= 86; y += 2)
+    for (let x = 94; x <= 106; x += 2) {
+      const p = await px(x, y)
+      const dWhite = Math.max(...[255, 255, 255].map((v, i) => Math.abs(p[i] - v)))
+      const dStripe = Math.max(...[0x88, 0x99, 0xaa].map((v, i) => Math.abs(p[i] - v)))
+      worst = Math.max(worst, Math.min(dWhite, dStripe))
+    }
+  const centre = await px(100, 80)
+  expect(centre[0] > 100 && worst < 60, `centre ${centre}, worst deviation ${worst}`)
+  return `centre ${centre.slice(0, 3)}, worst deviation from the stripe colours ${worst}`
 })
 
 await check('tool groups: rail shows one slot per group; right-click lists the group', async () => {

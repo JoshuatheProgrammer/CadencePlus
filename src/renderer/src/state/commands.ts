@@ -298,7 +298,7 @@ function nudge(dx: number, dy: number): void {
 function setOpacityKey(k: string): void {
   const t = get().tool
   const v = k === '0' ? 100 : Number(k) * 10
-  if (t === 'brush' || t === 'eraser' || t === 'clone' || t === 'heal' || t === 'historyBrush') setToolOption(t, { opacity: v })
+  if (t === 'brush' || t === 'eraser' || t === 'clone' || t === 'heal' || t === 'spotHeal' || t === 'historyBrush') setToolOption(t, { opacity: v })
   else if (t === 'blur' || t === 'sharpen' || t === 'smudge' || t === 'dodge' || t === 'burn' || t === 'sponge') setToolOption(t, { strength: v })
   else if (t === 'bucket' || t === 'gradient') setToolOption(t, { opacity: v })
 }

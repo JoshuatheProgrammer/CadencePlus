@@ -76,7 +76,7 @@ function RetouchOptions({ tool }: { tool: RetouchTool }) {
   )
 }
 
-function BrushOptions({ tool }: { tool: 'brush' | 'eraser' | 'clone' | 'heal' | 'historyBrush' }) {
+function BrushOptions({ tool }: { tool: 'brush' | 'eraser' | 'clone' | 'heal' | 'spotHeal' | 'historyBrush' }) {
   const o = useEditor((s) => s.options[tool])
   const up = (p: Partial<ToolOptions['brush']>) => setToolOption(tool, p)
   return (
@@ -250,6 +250,15 @@ function ToolOptionsBar() {
     case 'eraser':
     case 'historyBrush':
       body = <BrushOptions tool={tool} />
+      break
+    case 'spotHeal':
+      body = (
+        <>
+          <BrushOptions tool="spotHeal" />
+          <span className="sep-v" />
+          <Check label="Sample all layers" checked={o.spotHeal.sampleAll} onChange={(v) => setToolOption('spotHeal', { sampleAll: v })} />
+        </>
+      )
       break
     case 'blur':
     case 'sharpen':

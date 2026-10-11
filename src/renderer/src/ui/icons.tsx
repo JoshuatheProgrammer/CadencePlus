@@ -87,6 +87,13 @@ export const IconHeal = I(
     <path d="M6.6 6.6l2.8 2.8M7.3 8.7h.1M8.7 7.3h.1" />
   </>
 )
+export const IconSpotHeal = I(
+  <>
+    <rect x="1.8" y="5.5" width="12.4" height="5" rx="2.5" transform="rotate(-45 8 8)" />
+    <path d="M6.6 6.6l2.8 2.8" />
+    <path d="M12.5 1.5l.5 1.2 1.2.5-1.2.5-.5 1.2-.5-1.2-1.2-.5 1.2-.5z" />
+  </>
+)
 export const IconEraser = I(<path d="M9.5 2.3l4.2 4.2-6.8 6.8H4.1L2 11.2zM5.6 5.9l4.5 4.5M7.5 13.3h6.5" />)
 export const IconGradient = I(
   <>

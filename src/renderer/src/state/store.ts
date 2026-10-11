@@ -20,7 +20,7 @@ import type { ProofKind } from '../engine/ops'
 
 export type ToolId =
   | 'move' | 'marquee' | 'lasso' | 'polyLasso' | 'wand' | 'crop' | 'eyedropper'
-  | 'brush' | 'eraser' | 'clone' | 'heal' | 'historyBrush' | 'bucket' | 'gradient'
+  | 'brush' | 'eraser' | 'clone' | 'heal' | 'spotHeal' | 'historyBrush' | 'bucket' | 'gradient'
   | 'blur' | 'sharpen' | 'smudge' | 'dodge' | 'burn' | 'sponge'
   | 'text' | 'shape' | 'hand' | 'zoom'
 
@@ -36,6 +36,8 @@ export interface ToolOptions {
   /** Clone Stamp: `aligned` keeps the source offset between strokes. */
   clone: BrushOptions & { aligned: boolean; sampleAll: boolean }
   heal: BrushOptions & { aligned: boolean; sampleAll: boolean }
+  /** Spot Healing Brush: no source; `sampleAll` reads every visible layer. */
+  spotHeal: BrushOptions & { sampleAll: boolean }
   /** Paints from the history state chosen in the History panel. */
   historyBrush: BrushOptions
   blur: RetouchOptions
@@ -63,6 +65,7 @@ export const DEFAULT_OPTIONS: ToolOptions = {
   eraser: { ...DEFAULT_BRUSH, hardness: 100, pressureSize: false },
   clone: { ...DEFAULT_BRUSH, hardness: 60, pressureSize: false, aligned: true, sampleAll: false },
   heal: { ...DEFAULT_BRUSH, size: 40, hardness: 50, pressureSize: false, aligned: true, sampleAll: false },
+  spotHeal: { ...DEFAULT_BRUSH, size: 30, hardness: 60, pressureSize: false, sampleAll: false },
   historyBrush: { ...DEFAULT_BRUSH, hardness: 50, pressureSize: false },
   blur: { ...DEFAULT_BRUSH, size: 40, hardness: 0, pressureSize: false, strength: 50 },
   sharpen: { ...DEFAULT_BRUSH, size: 40, hardness: 0, pressureSize: false, strength: 50 },

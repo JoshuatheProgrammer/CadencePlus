@@ -27,7 +27,8 @@ export const TOOLS: (ToolDef | null)[] = [
   null,
   { id: 'brush', label: 'Brush', key: 'B', icon: I.IconBrush, hint: '[ ] size · Shift+[ ] hardness · 1–0 opacity · Shift+click draws a straight line · Alt picks a colour' },
   { id: 'clone', label: 'Clone Stamp', key: 'S', icon: I.IconStamp, hint: 'Alt+click to set the source, then paint · Aligned keeps the offset between strokes' },
-  { id: 'heal', label: 'Healing Brush', key: 'J', icon: I.IconHeal, hint: "Alt+click to set the source, then paint over a blemish · the patch takes on the surrounding colour and light when you release" },
+  { id: 'spotHeal', label: 'Spot Healing Brush', key: 'J', group: 'heal', icon: I.IconSpotHeal, hint: 'Paint over a blemish · on release it is replaced with nearby texture that matches its surroundings, blended into the local colour and light' },
+  { id: 'heal', label: 'Healing Brush', key: 'J', group: 'heal', icon: I.IconHeal, hint: "Alt+click to set the source, then paint over a blemish · the patch takes on the surrounding colour and light when you release" },
   { id: 'historyBrush', label: 'History Brush', key: 'Y', icon: I.IconHistoryBrush, hint: 'Paints pixels back from a history state · click the brush column in the History panel to choose the state (default: the oldest)' },
   { id: 'eraser', label: 'Eraser', key: 'E', icon: I.IconEraser, hint: '[ ] size · Shift+[ ] hardness · erases to transparency' },
   { id: 'gradient', label: 'Gradient', key: 'G', icon: I.IconGradient, hint: 'Drag to draw a gradient from the foreground colour · Shift snaps to 45°' },
@@ -49,7 +50,7 @@ export const TOOLS: (ToolDef | null)[] = [
 export const TOOL_LIST = TOOLS.filter((t): t is ToolDef => !!t)
 
 /** Tools whose options are brush options (size, hardness, …). */
-export const BRUSH_TOOLS = ['brush', 'eraser', 'clone', 'heal', 'historyBrush', 'blur', 'sharpen', 'smudge', 'dodge', 'burn', 'sponge'] as const
+export const BRUSH_TOOLS = ['brush', 'eraser', 'clone', 'heal', 'spotHeal', 'historyBrush', 'blur', 'sharpen', 'smudge', 'dodge', 'burn', 'sponge'] as const
 export type BrushToolId = (typeof BRUSH_TOOLS)[number]
 export const isBrushTool = (t: ToolId): t is BrushToolId => (BRUSH_TOOLS as readonly string[]).includes(t)
 
