@@ -7,6 +7,7 @@ import * as D from './doc-actions'
 import * as A from './image-actions'
 import { activeDoc, activeDocState, get, set, setToolOption, toast, type PanelId, type ToolId } from './store'
 import { TOOL_GROUPS, TOOL_LIST } from './tools'
+import { canHaveEffects, EFFECT_KINDS, EFFECT_LABELS } from '@core/effects'
 import { PROOF_LABELS } from '../engine/ops'
 import { docColor, type DocColor } from '@core/model'
 import * as T from './transform-actions'
@@ -40,6 +41,10 @@ function toggleTarget(): void {
   const d = activeDoc()
   const l = activeL()
   if (d && l?.mask) A.selectLayer(l.id, d.target === 'mask' ? 'pixels' : 'mask')
+}
+const canStyle = () => {
+  const l = activeL()
+  return !!l && canHaveEffects(l)
 }
 const canUndo = () => !!activeDocState()?.history.past.length
 const canRedo = () => !!activeDocState()?.history.future.length
@@ -142,6 +147,8 @@ export const COMMANDS: Command[] = [
   { id: 'select.feather', label: 'Feather…', keys: ['Shift+F6'], run: () => set({ dialog: { kind: 'feather' } }), enabled: hasSel },
 
   // Filter
+  ...EFFECT_KINDS.map((k) => ({ id: `layer.style.${k}`, label: `${EFFECT_LABELS[k]}…`, run: () => set({ dialog: { kind: 'layerStyle', effect: k } }), enabled: canStyle })),
+  { id: 'layer.style.clear', label: 'Clear Layer Style', run: () => A.setLayerEffects(activeL()!.id, undefined), enabled: () => canStyle() && !!activeL()?.effects },
   { id: 'select.quickMask', label: 'Edit in Quick Mask Mode', keys: ['Q'], run: A.toggleQuickMask, enabled: hasDoc },
   { id: 'select.colorRange', label: 'Color Range…', run: () => set({ dialog: { kind: 'colorRange' } }), enabled: hasDoc },
   { id: 'filter.blur', label: 'Gaussian Blur…', run: () => set({ dialog: { kind: 'blur' } }), enabled: hasDoc },

@@ -39,6 +39,7 @@ export function Viewport() {
   const filterPreview = useEditor((s) => s.filterPreview)
   const crop = useEditor((s) => s.crop)
   const maskView = useEditor((s) => s.maskView)
+  const effectsPreview = useEditor((s) => s.effectsPreview)
   const proofOn = useEditor((s) => s.proofOn)
   const proofSetup = useEditor((s) => s.proofSetup)
   const gamutWarning = useEditor((s) => s.gamutWarning)
@@ -97,7 +98,7 @@ export function Viewport() {
       ctx.fillStyle = ctx.createPattern(checkerTile(8 * size.dpr), 'repeat')!
       ctx.fillRect(r.x, r.y, r.w, r.h)
       const comp = poolCanvas('view.composite', W, H)
-      renderDocument(comp, doc, { xf, width: W, height: H, stroke, filterPreview, maskView, quickMask: true, float: transform ? { fs: transform.fs, m: transformMatrix(transform), params: transform.params } : null })
+      renderDocument(comp, doc, { xf, width: W, height: H, stroke, filterPreview, effectsPreview, maskView, quickMask: true, float: transform ? { fs: transform.fs, m: transformMatrix(transform), params: transform.params } : null })
       // Soft proof / gamut warning are applied to the display only.
       const proof = proofOn ? proofSetup : null
       if (!(proof || gamutWarning) || !drawProofed(ctx, comp, proof, gamutWarning, screenSpace)) ctx.drawImage(comp, 0, 0)
@@ -130,7 +131,7 @@ export function Viewport() {
       ctx.strokeRect(r.x - 0.5, r.y - 0.5, r.w + 1, r.h + 1)
     })
     return () => cancelAnimationFrame(raf)
-  }, [doc, view, size, stroke, stroke?.rev, filterPreview, showGrid, maskView, transform, screenSpace, proofOn, proofSetup, gamutWarning])
+  }, [doc, view, size, stroke, stroke?.rev, filterPreview, effectsPreview, showGrid, maskView, transform, screenSpace, proofOn, proofSetup, gamutWarning])
 
   // Overlay render (ants animate while a selection exists)
   const frameRef = useRef(0)

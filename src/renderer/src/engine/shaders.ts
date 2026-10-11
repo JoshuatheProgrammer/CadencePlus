@@ -95,6 +95,12 @@ void main() {
   float k = exposure * w(luma(c.rgb));
   o = premul(c.rgb - k * c.rgb, c.a);
 }`,
+  // White with alpha = smoothstep(lo, hi, source alpha): grows shapes from a blurred alpha (layer-style strokes).
+  alphaThreshold: `uniform float lo; uniform float hi;
+void main() {
+  float a = smoothstep(lo, hi, at(src, here()).a);
+  o = vec4(a, a, a, a);
+}`,
   sponge: `uniform float amount;
 void main() {
   vec4 c = at(src, here());

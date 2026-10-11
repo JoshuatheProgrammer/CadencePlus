@@ -10,6 +10,7 @@ import { convertPixels, isWideGamut, matchesWorkingSpace, parseIcc, type IccProf
 import { IDENTITY_CURVE } from '@core/lut'
 import { createLayer, docColor, isVector, rasterBounds, unionRect, uid, type BlendMode, type DocColor, type ImageDocument, type Layer, type TileMap } from '@core/model'
 import { inflate } from '@core/png'
+import { canHaveEffects, type LayerEffects } from '@core/effects'
 import { tree } from '@core/tree'
 import { ctx2d, withFormat } from './format'
 import { canvasFromRgba, documentFromRgba, type ImportResult } from './io'
@@ -109,7 +110,7 @@ export function importPsd(bytes: Uint8Array, name: string): ImportResult {
         }
         if (pl.blendMode && !PSD_BLEND[pl.blendMode]) missing.add(`“${pl.blendMode}” blend mode`)
         if (pl.clipping) missing.add('clipping masks')
-        if (pl.effects) missing.add('layer styles (effects)')
+        if (pl.effects && pl.children) missing.add('styles on groups')
         if (pl.text) missing.add('live type (imported as pixels)')
         if (pl.placedLayer) missing.add('smart objects (imported as pixels)')
         if (pl.vectorMask) missing.add('vector masks')
@@ -132,6 +133,7 @@ export function importPsd(bytes: Uint8Array, name: string): ImportResult {
           }
           l = { ...createLayer(base.name, { type: 'raster', x: 0, y: 0, tiles }), ...base }
         }
+        if (pl.effects && canHaveEffects(l)) l.effects = effectsFromPsd(pl.effects, missing)
         const m = pl.mask
         if (m?.imageData && (m.right ?? 0) > (m.left ?? 0)) {
           // PSD masks are grey (white = visible); ours store the hidden amount.
@@ -179,6 +181,68 @@ export function importPsd(bytes: Uint8Array, name: string): ImportResult {
     }
     return { doc, note: missing.size ? `Not carried over: ${[...missing].join(', ')}.` : null }
   })
+}
+
+// ---------------------------------------------------------------------------
+// Layer styles ↔ Photoshop effects
+// ---------------------------------------------------------------------------
+
+type PsdEffects = NonNullable<PsdLayer['effects']>
+type PsdColor = NonNullable<NonNullable<PsdEffects['solidFill']>[number]['color']>
+
+function hexOf(c: PsdColor | undefined): string {
+  const v = c && 'r' in c ? [c.r, c.g, c.b] : c && 'fr' in c ? [c.fr * 255, c.fg * 255, c.fb * 255] : [0, 0, 0]
+  return '#' + v.map((x) => Math.round(Math.min(255, Math.max(0, x))).toString(16).padStart(2, '0')).join('')
+}
+
+function psdColorOf(hex: string): PsdColor {
+  const n = parseInt(hex.slice(1), 16)
+  return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 }
+}
+
+const px = (u: { units: string; value: number } | undefined) => u?.value ?? 0
+const units = (value: number) => ({ units: 'Pixels' as const, value })
+
+function effectsFromPsd(e: PsdEffects, missing: Set<string>): LayerEffects | undefined {
+  const on = (x: { enabled?: boolean } | undefined) => !e.disabled && x?.enabled !== false
+  const blend = (b: string | undefined, d: BlendMode) => (b && PSD_BLEND[b] && b !== 'pass through' ? PSD_BLEND[b] : d)
+  const fx: LayerEffects = {}
+  const ds = e.dropShadow?.[0]
+  if (ds) fx.dropShadow = { enabled: on(ds), color: hexOf(ds.color), opacity: ds.opacity ?? 0.75, blend: blend(ds.blendMode, 'multiply'), angle: ds.angle ?? 120, distance: px(ds.distance), size: px(ds.size) }
+  if ((e.dropShadow?.length ?? 0) > 1) missing.add('extra drop shadows')
+  if (e.outerGlow) fx.outerGlow = { enabled: on(e.outerGlow), color: hexOf(e.outerGlow.color), opacity: e.outerGlow.opacity ?? 0.75, blend: blend(e.outerGlow.blendMode, 'screen'), size: px(e.outerGlow.size) }
+  if (e.innerGlow) fx.innerGlow = { enabled: on(e.innerGlow), color: hexOf(e.innerGlow.color), opacity: e.innerGlow.opacity ?? 0.75, blend: blend(e.innerGlow.blendMode, 'screen'), size: px(e.innerGlow.size) }
+  const st = e.stroke?.[0]
+  if (st) {
+    if (st.fillType && st.fillType !== 'color') missing.add('gradient and pattern strokes (shown as solid)')
+    fx.stroke = { enabled: on(st), color: hexOf(st.color), opacity: st.opacity ?? 1, size: Math.max(1, px(st.size)), position: st.position ?? 'outside' }
+  }
+  const sf = e.solidFill?.[0]
+  if (sf) fx.colorOverlay = { enabled: on(sf), color: hexOf(sf.color), opacity: sf.opacity ?? 1 }
+  for (const [k, label] of [
+    ['innerShadow', 'Inner Shadow'],
+    ['bevel', 'Bevel & Emboss'],
+    ['satin', 'Satin'],
+    ['gradientOverlay', 'Gradient Overlay'],
+    ['patternOverlay', 'Pattern Overlay']
+  ] as const)
+    if (e[k]) missing.add(`${label} styles`)
+  return Object.keys(fx).length ? fx : undefined
+}
+
+function effectsToPsd(fx: LayerEffects): PsdEffects {
+  const base = { present: true, showInDialog: true }
+  const out: PsdEffects = {}
+  const blendOut = (b: BlendMode) => TO_PSD_BLEND[b] ?? 'normal'
+  if (fx.dropShadow) {
+    const d = fx.dropShadow
+    out.dropShadow = [{ ...base, enabled: d.enabled, color: psdColorOf(d.color), opacity: d.opacity, blendMode: blendOut(d.blend), angle: d.angle, distance: units(d.distance), size: units(d.size), useGlobalLight: false }]
+  }
+  if (fx.outerGlow) out.outerGlow = { ...base, enabled: fx.outerGlow.enabled, color: psdColorOf(fx.outerGlow.color), opacity: fx.outerGlow.opacity, blendMode: blendOut(fx.outerGlow.blend), size: units(fx.outerGlow.size) }
+  if (fx.innerGlow) out.innerGlow = { ...base, enabled: fx.innerGlow.enabled, color: psdColorOf(fx.innerGlow.color), opacity: fx.innerGlow.opacity, blendMode: blendOut(fx.innerGlow.blend), size: units(fx.innerGlow.size), source: 'edge' }
+  if (fx.stroke) out.stroke = [{ ...base, enabled: fx.stroke.enabled, color: psdColorOf(fx.stroke.color), opacity: fx.stroke.opacity, size: units(fx.stroke.size), position: fx.stroke.position, fillType: 'color', blendMode: 'normal' }]
+  if (fx.colorOverlay) out.solidFill = [{ ...base, enabled: fx.colorOverlay.enabled, color: psdColorOf(fx.colorOverlay.color), opacity: fx.colorOverlay.opacity, blendMode: 'normal' }]
+  return out
 }
 
 // ---------------------------------------------------------------------------
@@ -234,6 +298,7 @@ export function exportPsd(doc: ImageDocument): { bytes: Uint8Array; note: string
       const r = rasterToCanvas(content, 'psd')
       out = r ? { ...base, left: r.rect.x, top: r.rect.y, right: r.rect.x + r.rect.w, bottom: r.rect.y + r.rect.h, imageData: pixelsOf(r.canvas) } : { ...base }
     }
+    if (l.effects && canHaveEffects(l)) out.effects = effectsToPsd(l.effects)
     if (l.mask) {
       const mb = rasterBounds(l.mask) ?? { x: 0, y: 0, w: 1, h: 1 }
       const mc = new OffscreenCanvas(mb.w, mb.h)

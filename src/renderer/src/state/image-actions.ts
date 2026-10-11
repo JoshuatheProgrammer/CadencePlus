@@ -4,6 +4,7 @@
  */
 import { ADJUSTMENTS, defaultAdjustment, type Adjustment, type AdjustmentKind, type PixelOp } from '@core/adjustments'
 import * as E from '@core/edit'
+import type { LayerEffects } from '@core/effects'
 import { activeLayer, createDocument, docColor, TILE, type DocColor, type ImageDocument, type Rect, type TileMap } from '@core/model'
 import { ctx2d, pixelCanvas, withFormat } from '../engine/format'
 import { descendants, effectivelyVisible } from '@core/tree'
@@ -443,6 +444,10 @@ export function toggleQuickMask(): void {
     delete x.quickMask
     x.selection = maskId ? { steps: [{ op: 'add', shape: { kind: 'mask', maskId, x: 0, y: 0 } }] } : null
   })
+}
+
+export function setLayerEffects(id: string, effects: LayerEffects | undefined): void {
+  edit(effects ? 'Layer Style' : 'Clear Layer Style', (x) => E.setLayerEffects(x, id, effects))
 }
 
 /** Loads the visible part of a layer's mask as the selection. */

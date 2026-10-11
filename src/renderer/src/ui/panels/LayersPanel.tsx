@@ -10,6 +10,7 @@ import { keysFor } from '../../state/commands'
 import { ScrubNumber, showContextMenu } from '@cadence/ui/components'
 import { IconChevronDown, IconChevronRight, IconFolder, IconText, IconEye, IconEyeOff, IconFx, IconLock, IconMask, IconNewLayer, IconTrash, IconUnlock, IconFillLayer } from '../icons'
 import { checkerTile } from '@cadence/ui/tokens'
+import { canHaveEffects, EFFECT_KINDS, hasActiveEffects } from '@core/effects'
 
 const THUMB = 34
 
@@ -116,6 +117,8 @@ function LayerRow({ doc, layer, depth, active, onDragStart, renaming, setRenamin
           { sep: true },
           { label: 'Select Pixels', action: () => A.selectLayerPixels(layer.id), disabled: layer.content.type === 'adjustment' },
           { label: 'Rasterize Layer', action: A.rasterizeActive, disabled: layer.content.type === 'raster' || layer.content.type === 'adjustment' },
+          { label: 'Layer Style…', action: () => set({ dialog: { kind: 'layerStyle', effect: EFFECT_KINDS.find((k) => layer.effects?.[k]?.enabled) ?? 'dropShadow' } }), disabled: !canHaveEffects(layer) || layer.locked },
+          { label: 'Clear Layer Style', action: () => A.setLayerEffects(layer.id, undefined), disabled: !layer.effects || layer.locked },
           { sep: true },
           ...(layer.mask
             ? [
@@ -208,6 +211,11 @@ function LayerRow({ doc, layer, depth, active, onDragStart, renaming, setRenamin
           layer.name
         )}
       </span>
+      {hasActiveEffects(layer.effects) && (
+        <button className="fx-badge" title="Layer style — click to edit" onClick={() => (A.selectLayer(layer.id), set({ dialog: { kind: 'layerStyle', effect: EFFECT_KINDS.find((k) => layer.effects?.[k]?.enabled) ?? 'dropShadow' } }))}>
+          fx
+        </button>
+      )}
       {layer.opacity < 1 && <span className="opacity-badge">{Math.round(layer.opacity * 100)}%</span>}
       {layer.locked && (
         <span className="lock" title="Locked">

@@ -82,7 +82,7 @@ export function adjustmentLut(a: Adjustment): Uint8Array | null {
   return null
 }
 
-export type ShaderFilter = 'unsharp' | 'highPass' | 'noise' | 'motionBlur' | 'dodge' | 'burn' | 'sponge'
+export type ShaderFilter = 'unsharp' | 'highPass' | 'noise' | 'motionBlur' | 'dodge' | 'burn' | 'sponge' | 'alphaThreshold'
 
 /** A GPU filter (see core/filters.ts). */
 export interface ShaderOp {

@@ -14,6 +14,7 @@ import { Logo, Wordmark } from '../icons'
 import { ShortcutsDialog } from './ShortcutsDialog'
 import { FilterDialog } from './FilterDialog'
 import { ColorRangeDialog } from './ColorRangeDialog'
+import { LayerStyleDialog } from './LayerStyleDialog'
 
 const close = () => set({ dialog: null, filterPreview: null })
 
@@ -440,7 +441,7 @@ function ExportDialog() {
         <label>Image</label>
         <span className="note">
           {d.width} × {d.height} px ·{' '}
-          {format === 'psd' ? 'layers, groups, masks and adjustment layers; type and shapes as pixels' : `all visible layers, flattened${format === 'jpeg' ? ' · transparency becomes white' : ''}`}
+          {format === 'psd' ? 'layers, groups, masks, adjustment layers and layer styles; type and shapes as pixels' : `all visible layers, flattened${format === 'jpeg' ? ' · transparency becomes white' : ''}`}
         </span>
         {(format === 'png' || format === 'tiff') && color.depth === 16 && (
           <>
@@ -556,6 +557,8 @@ export function Dialogs() {
       return <FilterDialog kind={d.filter} />
     case 'colorRange':
       return activeDoc() ? <ColorRangeDialog /> : null
+    case 'layerStyle':
+      return activeDoc() ? <LayerStyleDialog focus={d.effect} /> : null
     case 'imageSize':
       return activeDoc() ? <ImageSizeDialog /> : null
     case 'canvasSize':

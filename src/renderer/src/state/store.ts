@@ -3,6 +3,7 @@
  * view; pixel tiles live in the engine's tile store.
  */
 import type { FilterKind, ToneRange } from '@core/filters'
+import type { EffectKind, LayerEffects } from '@core/effects'
 import { create } from 'zustand'
 import type { AdjustmentKind } from '@core/adjustments'
 import type { History } from '@cadence/core/history'
@@ -101,6 +102,7 @@ export type Dialog =
   | { kind: 'blur' }
   | { kind: 'filter'; filter: FilterKind }
   | { kind: 'colorRange' }
+  | { kind: 'layerStyle'; effect: EffectKind }
   | { kind: 'imageSize' }
   | { kind: 'canvasSize' }
   | { kind: 'feather' }
@@ -134,6 +136,8 @@ export interface EditorState {
   viewport: { w: number; h: number }
   stroke: StrokePreview | null
   filterPreview: FilterPreview | null
+  /** Layer Style dialog preview. */
+  effectsPreview: { layerId: string; effects: LayerEffects } | null
   /** Pending crop rectangle (document pixels). */
   crop: Rect | null
   busy: string | null
@@ -183,6 +187,7 @@ export const useEditor = create<EditorState>(() => ({
   viewport: { w: 800, h: 600 },
   stroke: null,
   filterPreview: null,
+  effectsPreview: null,
   crop: null,
   busy: null,
   maskView: null,

@@ -10,6 +10,7 @@ import type { Adjustment } from './adjustments'
 import type { TransformParams } from './affine'
 import type { ShapeData, TextData } from './vector'
 import type { Selection } from './selection'
+import type { LayerEffects } from './effects'
 
 export const TILE = 256
 /** Chromium's canvas limit is 16384 × 16384 (268 M pixels). */
@@ -115,6 +116,8 @@ export interface Layer {
   mask?: LayerMask | null
   /** Group this layer belongs to (null/missing = top level). */
   parent?: string | null
+  /** Layer styles (drop shadow, stroke, …). */
+  effects?: LayerEffects
 }
 
 export interface ImageDocument {

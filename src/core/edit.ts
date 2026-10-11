@@ -9,6 +9,7 @@ import type { TransformParams } from './affine'
 import { translate, type Selection } from './selection'
 import { descendants, effectivelyVisible, isGroup, lockedBy } from './tree'
 import { keepTopLeft, type ShapeData, type TextData } from './vector'
+import { canHaveEffects, type LayerEffects } from './effects'
 
 export class EditError extends Error {}
 
@@ -199,6 +200,14 @@ export function setLayerBlend(doc: ImageDocument, id: string, blend: BlendMode):
   const l = unlocked(doc, id, 'change its blend mode')
   if (blend === 'pass-through' && !isGroup(l)) throw new EditError('Pass Through is only for groups.')
   l.blend = blend
+}
+
+/** Layer styles; undefined clears them. */
+export function setLayerEffects(doc: ImageDocument, id: string, effects: LayerEffects | undefined): void {
+  const l = unlocked(doc, id, 'change its style')
+  if (!canHaveEffects(l)) throw new EditError('Layer styles apply to pixel, type and shape layers.')
+  if (effects && Object.keys(effects).length) l.effects = effects
+  else delete l.effects
 }
 
 export function setFillColor(doc: ImageDocument, id: string, color: string): void {

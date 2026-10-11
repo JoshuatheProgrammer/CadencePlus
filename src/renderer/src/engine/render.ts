@@ -19,6 +19,8 @@ import { partMatrix, type FloatState } from './transform'
 import { selectionMask } from './selection'
 import { getTile, poolCanvas, type Ctx2D } from './tiles'
 import { ctx2d } from './format'
+import { canHaveEffects, hasActiveEffects, type LayerEffects } from '@core/effects'
+import { drawWithEffects } from './effects'
 
 /** target = doc × scale + (ox, oy) */
 export interface Xf {
@@ -56,6 +58,8 @@ export interface RenderOptions {
   height: number
   stroke?: StrokePreview | null
   filterPreview?: FilterPreview | null
+  /** Layer Style dialog: effects shown in place of a layer's own while editing. */
+  effectsPreview?: { layerId: string; effects: LayerEffects } | null
   /** Show the Quick Mask as a red overlay (viewport only). */
   quickMask?: boolean
   /** Render just this layer at full opacity, normal blend (thumbnails, sampling). */
@@ -317,7 +321,10 @@ function renderLayers(target: OffscreenCanvas, ctx: Ctx2D, doc: ImageDocument, l
 
     const fp = o.filterPreview && o.filterPreview.layerId === l.id ? o.filterPreview : null
     const fl = o.float && o.float.fs.layerId === l.id ? o.float : null
-    if (!stroke && !fp && !masked && !fl) {
+    // Layer styles (not in single-layer renders such as thumbnails).
+    const fx = o.onlyLayer ? undefined : o.effectsPreview?.layerId === l.id ? o.effectsPreview.effects : l.effects
+    const styled = canHaveEffects(l) && hasActiveEffects(fx)
+    if (!stroke && !fp && !masked && !fl && !styled) {
       ctx.save()
       ctx.globalAlpha = l.opacity
       ctx.globalCompositeOperation = op
@@ -377,11 +384,14 @@ function renderLayers(target: OffscreenCanvas, ctx: Ctx2D, doc: ImageDocument, l
       tg.restore()
     }
 
-    ctx.save()
-    ctx.globalAlpha = l.opacity
-    ctx.globalCompositeOperation = op
-    ctx.drawImage(tmp, 0, 0)
-    ctx.restore()
+    if (styled) drawWithEffects(ctx, tmp, l, fx!, o.xf.scale, op)
+    else {
+      ctx.save()
+      ctx.globalAlpha = l.opacity
+      ctx.globalCompositeOperation = op
+      ctx.drawImage(tmp, 0, 0)
+      ctx.restore()
+    }
   }
 }
 

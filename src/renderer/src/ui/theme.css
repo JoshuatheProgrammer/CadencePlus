@@ -1487,3 +1487,51 @@
   color: var(--c-text-3);
   font-size: var(--fs-sm);
 }
+
+/* ---------- Layer styles ---------- */
+.layer-row .fx-badge {
+  border: none;
+  background: transparent;
+  color: var(--c-text-2);
+  font: italic 600 var(--fs-sm) / 1 var(--font);
+  padding: 2px 4px;
+  border-radius: var(--radius);
+}
+.layer-row .fx-badge:hover {
+  background: var(--c-raised);
+  color: var(--c-text);
+}
+.layer-style {
+  display: flex;
+  gap: 14px;
+  min-height: 250px;
+}
+.layer-style .fx-list {
+  flex: 0 0 160px;
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius);
+  background: var(--c-inset);
+  padding: 4px 0;
+}
+.layer-style .fx-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 10px;
+  cursor: default;
+}
+.layer-style .fx-item:hover {
+  background: var(--c-panel-2);
+}
+.layer-style .fx-item.selected {
+  background: var(--c-select);
+  color: var(--c-accent);
+}
+.layer-style .fx-settings {
+  flex: 1;
+  min-width: 0;
+}
+.layer-style .fx-title {
+  font-weight: 600;
+  margin: 2px 0 10px;
+}

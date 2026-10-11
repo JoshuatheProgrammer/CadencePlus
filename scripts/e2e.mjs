@@ -1437,6 +1437,90 @@ await check('Color Range: sampled colour and hue families select by colour', asy
   return 'red picked by sample, blue by the Blues family'
 })
 
+// ---------------------------------------------------------------------------
+// Phase 7: layer styles, multiple layers, export presets
+// ---------------------------------------------------------------------------
+
+const styledSquare = async () => {
+  await closeAllClean()
+  await newDoc(200, 200)
+  await A('newLayer')
+  await selectRect(60, 60, 80, 80)
+  await A('fillWith', '#ff0000')
+  await A('deselect')
+  return ev(() => window.__cadencePlus.get().docs[0].history.present.activeLayerId)
+}
+const setFx = (id, fx) => A('setLayerEffects', id, fx)
+
+await check('layer styles: drop shadow, outside/inside stroke, colour overlay, glows (measured)', async () => {
+  const id = await styledSquare()
+  await setFx(id, { dropShadow: { enabled: true, color: '#000000', opacity: 1, blend: 'normal', angle: 90, distance: 10, size: 0 } })
+  const sh = await px(100, 145)
+  const below = await px(100, 155)
+  expect(near(sh, [0, 0, 0, 255], 2) && near(below, [255, 255, 255, 255], 2), `shadow ${sh} / ${below}`)
+  await setFx(id, { stroke: { enabled: true, color: '#0000ff', opacity: 1, size: 4, position: 'outside' } })
+  const out = { ring: await px(142, 100), beyond: await px(147, 100), body: await px(137, 100) }
+  expect(near(out.ring, [0, 0, 255, 255], 2) && near(out.beyond, [255, 255, 255, 255], 2) && near(out.body, [255, 0, 0, 255], 2), `outside stroke ${JSON.stringify(out)}`)
+  await setFx(id, { stroke: { enabled: true, color: '#0000ff', opacity: 1, size: 4, position: 'inside' } })
+  const ins = { ring: await px(138, 100), outside: await px(142, 100), body: await px(132, 100) }
+  expect(near(ins.ring, [0, 0, 255, 255], 2) && near(ins.outside, [255, 255, 255, 255], 2) && near(ins.body, [255, 0, 0, 255], 2), `inside stroke ${JSON.stringify(ins)}`)
+  await setFx(id, { colorOverlay: { enabled: true, color: '#00ff00', opacity: 1 } })
+  expect(near(await px(100, 100), [0, 255, 0, 255], 1), 'colour overlay')
+  await setFx(id, { outerGlow: { enabled: true, color: '#0000ff', opacity: 1, blend: 'normal', size: 12 }, innerGlow: { enabled: true, color: '#ffff00', opacity: 1, blend: 'normal', size: 12 } })
+  const og = await px(143, 100)
+  const ig = await px(138, 100)
+  const centre = await px(100, 100)
+  expect(og[2] > og[0] && og[0] < 250 && ig[1] > 60 && near(centre, [255, 0, 0, 255], 2), `glows outer ${og} inner ${ig} centre ${centre}`)
+  return `shadow ${sh[0]}, stroke ring ${out.ring.slice(0, 3)}, outer glow ${og.slice(0, 3)}, inner glow ${ig.slice(0, 3)}`
+})
+
+await check('Layer Style dialog: live preview, OK is one undo step, fx badge, survives save/reopen', async () => {
+  const id = await styledSquare()
+  await ev(() => window.__cadencePlus.run('layer.style.stroke'))
+  await win.waitForSelector('.modal >> text=Layer Style')
+  await settle(300)
+  // Preview only: the document is unchanged while the dialog is open.
+  expect(!(await doc()).layers.find((l) => l.id === id).effects, 'dialog changed the document before OK')
+  const preview = await ev(([x, y]) => window.__cadencePlus.screenPixel(x, y), [141, 100])
+  expect(preview[2] < 60 && preview[0] < 60, `preview ${preview}`)
+  await win.keyboard.press('Enter')
+  await settle(200)
+  expect((await lastLabel()) === 'Layer Style', `label ${await lastLabel()}`)
+  expect((await win.locator('.layer-row .fx-badge').count()) === 1, 'no fx badge')
+  const path = join(work, 'styled.cadenceimg')
+  await ev((p) => window.__cadencePlus.set((s) => ({ docs: s.docs.map((d) => ({ ...d, path: p })) })), path)
+  expect(await D('save'), 'save')
+  await closeAllClean()
+  await D('openPaths', [path])
+  await win.waitForFunction(() => window.__cadencePlus.get().docs.length === 1)
+  await settle(300)
+  const l = (await doc()).layers.find((x) => x.effects)
+  expect(l?.effects?.stroke?.enabled && l.effects.stroke.position === 'outside', `reopened ${JSON.stringify(l?.effects)}`)
+  expect(near(await px(141, 100), [0, 0, 0, 255], 2), `stroke after reopen ${await px(141, 100)}`)
+  await ev(() => window.__cadencePlus.run('edit.undo')).catch(() => {})
+  return 'preview → OK → saved → reopened with stroke'
+})
+
+await check('layer styles round-trip through PSD (ag-psd reads them; Cadence+ reopens them)', async () => {
+  const id = await styledSquare()
+  await setFx(id, {
+    dropShadow: { enabled: true, color: '#102030', opacity: 0.5, blend: 'multiply', angle: 135, distance: 6, size: 4 },
+    stroke: { enabled: true, color: '#0000ff', opacity: 1, size: 3, position: 'inside' }
+  })
+  const want = await px(138, 100)
+  const out = join(work, 'styles.psd')
+  expect(await D('exportTo', out, 'psd', 1), 'export')
+  const psd = readPsd(readFileSync(out), { skipLayerImageData: true, skipCompositeImageData: true, skipThumbnail: true })
+  const fx = psd.children.find((c) => c.effects)?.effects
+  expect(fx?.stroke?.[0]?.position === 'inside' && fx.dropShadow?.[0]?.angle === 135 && fx.dropShadow[0].distance.value === 6, `psd effects ${JSON.stringify(fx)}`)
+  await openOne(out)
+  const l = (await doc()).layers.find((x) => x.effects)
+  expect(l?.effects?.stroke?.position === 'inside' && l.effects.dropShadow?.color === '#102030', `reopened ${JSON.stringify(l?.effects)}`)
+  const got = await px(138, 100)
+  expect(near(got, want, 2), `pixel ${want} → ${got}`)
+  return 'stroke + drop shadow written and read back'
+})
+
 await check('tool groups: rail shows one slot per group; right-click lists the group', async () => {
   await win.keyboard.press('o')
   const slot = win.locator('.tool-btn.active')

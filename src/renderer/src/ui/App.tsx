@@ -182,6 +182,10 @@ function menus(): Record<string, MenuEntry[]> {
       { cmd: 'layer.group' },
       { cmd: 'layer.ungroup' },
       {
+        label: 'Layer Style',
+        submenu: () => [{ cmd: 'layer.style.dropShadow' }, { cmd: 'layer.style.outerGlow' }, { cmd: 'layer.style.stroke' }, { cmd: 'layer.style.innerGlow' }, { cmd: 'layer.style.colorOverlay' }, { sep: true }, { cmd: 'layer.style.clear' }]
+      },
+      {
         label: 'Layer Mask',
         submenu: () => [
           { cmd: 'layer.mask.revealAll' },
