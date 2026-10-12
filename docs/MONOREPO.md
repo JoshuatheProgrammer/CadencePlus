@@ -8,6 +8,7 @@ packages:
 |---|---|---|
 | `@cadence/ui` | `packages/ui` | `base.css` (design tokens, global element rules, form controls, focus ring, scrollbars, dockview theme, menus, tooltips, buttons, scrub numbers, toasts), `components.tsx` (context menu, `ScrubNumber`, `SliderField`, `NumberInput`, `Modal`), `Tooltip.tsx`, `tokens.ts` (CSS tokens for canvas drawing) |
 | `@cadence/core` | `packages/core` | `history.ts` (generic snapshot undo/redo over Immer with coalescing and a step limit), `color.ts` (hex / RGB / HSV) |
+| `@cadence/release` | `packages/release` | Main-process release helpers: the newest GitHub release with an app's tag prefix, and self-update (electron-updater) |
 
 The packages ship TypeScript sources (`exports` point at `.ts`/`.tsx`/`.css`);
 each app's Vite build compiles them. React, Zustand, Immer and dockview are
@@ -21,6 +22,8 @@ import { createHistory, apply, undo } from '@cadence/core/history'
 
 ## Status
 
+- **Layout**: done — the repository root is the `cadence` workspace, with
+  Cadence+ in `apps/plus` and Cadence Hub in `apps/hub`.
 - **Cadence+**: built from the packages (verified: type-check, 58 unit tests,
   69 end-to-end checks, and a pixel comparison of 13 UI screenshots before and
   after the split, identical apart from animated marching ants and the live
@@ -32,22 +35,30 @@ import { createHistory, apply, undo } from '@cadence/core/history'
 
 ## Moving Cadence in
 
-Target layout:
+Layout (steps 1 is done):
 
 ```
-cadence/                 (this repository, renamed)
-  apps/cadence/          the video editor
-  apps/cadence-plus/     the image editor (today's src/, scripts/, tests/)
-  packages/ui/
-  packages/core/
+cadence/
+  apps/plus/             Cadence+ (image editor)
+  apps/hub/              Cadence Hub
+  apps/video/            Cadence Video (to import)
+  packages/ui/  packages/core/  packages/release/
   package.json           { "workspaces": ["apps/*", "packages/*"] }
 ```
 
-Steps, in order (each leaves both apps building):
+Steps, in order (each leaves every app building):
 
-1. Move Cadence+ into `apps/cadence-plus/` with `git mv`; root `package.json`
-   becomes workspaces-only. Run its `typecheck`, `test` and `e2e`.
-2. Import Cadence with history: `git subtree add --prefix apps/cadence <path-to-Video-Editor> main`.
+1. ~~Move Cadence+ into `apps/plus/`~~ (done).
+2. Once Cadence Video's working copy is committed, import it with history:
+   `git subtree add --prefix apps/video <path-to-Video-Editor> main`.
+   Rename its package to `cadence-video` and its `productName` to
+   `Cadence Video` (Cadence Hub looks for that name), and give it the same
+   packaging as Cadence+: `electron-builder.config.cjs` (appId
+   `org.cadence.video`, executable `CadenceVideo`, artifact
+   `Cadence-Video-Setup-${version}.exe`, `uninstallDisplayName: 'Cadence Video'`),
+   `src/main/updater.ts` using `createSelfUpdater(__RELEASE__, 'video-v')`,
+   the `bundledPackages` plugin and `scripts/notices.mjs` in its build, and
+   icons from `packages/ui/assets/cadence-video-logo.svg`.
 3. In Cadence, replace its copies with the shared ones:
    - `ui/Tooltip.tsx` — identical; delete and import `@cadence/ui/Tooltip`.
    - `ui/tokens.ts` — the shared one is a superset (adds `checkerTile`).

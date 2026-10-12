@@ -3,8 +3,13 @@
 ; installs them (from GitHub releases) when it starts. Silent installs (/S)
 ; skip the page and write nothing.
 
+!include MUI2.nsh
 !include nsDialogs.nsh
 !include LogicLib.nsh
+
+; The page exists only in the installer (this file is also read when the
+; uninstaller is built, where unused functions would be an error).
+!ifndef BUILD_UNINSTALLER
 
 Var CadenceAppsDialog
 Var CadencePlusBox
@@ -45,6 +50,7 @@ Function CadenceAppsLeave
   ${NSD_GetState} $CadencePlusBox $CadenceWantPlus
   ${NSD_GetState} $CadenceVideoBox $CadenceWantVideo
 FunctionEnd
+!endif
 
 !macro customInstall
   ${If} $CadenceWantPlus == ${BST_CHECKED}
