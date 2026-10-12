@@ -1782,7 +1782,7 @@ await check('home screen: Recent shows a live preview, folder and details of eac
     els.map((e) => ({ name: e.querySelector('.n')?.textContent, details: e.querySelector('.d')?.textContent, img: !!e.querySelector('img'), missing: e.classList.contains('missing') }))
   )
   const byName = Object.fromEntries(cards.map((c) => [c.name, c]))
-  expect(byName['Poster draft.cadenceimg']?.img && /1200 × 1600 · RGB\/8 · 4 layers/.test(byName['Poster draft.cadenceimg'].details), `poster card ${JSON.stringify(byName['Poster draft.cadenceimg'])}`)
+  expect(byName['Poster draft.cadenceimg']?.img && /1200 × 1600 px · RGB\/8 · 4 layers/.test(byName['Poster draft.cadenceimg'].details), `poster card ${JSON.stringify(byName['Poster draft.cadenceimg'])}`)
   expect(byName['Export.png']?.img, 'image file got no preview')
   expect(byName['Gone.psd']?.missing && !byName['Gone.psd'].img, 'missing file not marked')
   // The preview really shows the picture: the poster's yellow circle is in its thumbnail.

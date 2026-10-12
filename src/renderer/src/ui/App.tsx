@@ -582,16 +582,16 @@ function RecentCard({ path }: { path: string }) {
       }}
     >
       <div className="preview">
-        {info?.url ? <img src={info.url} alt="" draggable={false} /> : <span className="placeholder">{missing ? 'File not found' : info ? (/\.cadenceimg$/i.test(path) ? <IconNewDoc size={22} /> : <IconImage size={22} />) : ''}</span>}
-        <span className="badge">{FORMAT_NAMES[ext] ?? ext.toUpperCase()}</span>
+        {info?.url ? <img src={info.url} alt="" draggable={false} /> : <span className="placeholder">{missing ? 'Not found' : info ? (/\.cadenceimg$/i.test(path) ? <IconNewDoc size={20} /> : <IconImage size={20} />) : ''}</span>}
       </div>
       <div className="meta">
         <div className="n">{name}</div>
         <div className="p">{folder}</div>
-        <div className="d">
-          <span className="what">{missing ? 'Moved or deleted' : m ? `${m.width} × ${m.height} · ${m.mode}${m.layers > 1 ? ` · ${m.layers} layers` : ''}` : info ? '' : 'Loading preview…'}</span>
-          {info?.stat ? <span className="when">{ago(info.stat.mtime)}</span> : null}
-        </div>
+        <div className="d">{missing ? 'Moved or deleted' : m ? `${m.width} × ${m.height} px · ${m.mode}${m.layers > 1 ? ` · ${m.layers} layers` : ''}` : info ? '' : 'Loading preview…'}</div>
+      </div>
+      <div className="side">
+        <span className="badge">{FORMAT_NAMES[ext] ?? ext.toUpperCase()}</span>
+        {info?.stat ? <span className="when">{ago(info.stat.mtime)}</span> : null}
       </div>
     </div>
   )
