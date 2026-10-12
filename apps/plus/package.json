@@ -22,6 +22,7 @@
   },
   "devDependencies": {
     "@cadence/core": "0.1.0",
+    "@cadence/release": "0.1.0",
     "@cadence/ui": "0.1.0",
     "@types/node": "^26.6.5",
     "@types/react": "^19.3.0",

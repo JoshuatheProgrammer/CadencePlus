@@ -5,7 +5,7 @@ import { app, BrowserWindow, clipboard, ClipboardItem, dialog, ipcMain, Menu, sh
 import { IMAGE_EXTENSIONS, RAW_FILE_EXTENSIONS, type RecoveryMeta } from '@shared/ipc'
 import { discardRecovery, listRecovery, writeRecovery } from './recovery'
 import { addRecent, getSettings, setSetting } from './settings'
-import { checkForUpdates, installUpdate, startUpdater, updateStatus } from './updater'
+import { updater } from './updater'
 
 if (process.env.CADENCE_PLUS_USER_DATA) app.setPath('userData', process.env.CADENCE_PLUS_USER_DATA)
 
@@ -107,9 +107,9 @@ function registerIpc(): void {
     const r = await dialog.showOpenDialog(win(e), { title, properties: ['openDirectory', 'createDirectory'] })
     return r.canceled || !r.filePaths[0] ? null : r.filePaths[0]
   })
-  ipcMain.handle('update:check', (_e, manual: boolean) => checkForUpdates(manual))
-  ipcMain.handle('update:status', () => updateStatus())
-  ipcMain.on('update:install', () => installUpdate())
+  ipcMain.handle('update:check', (_e, manual: boolean) => updater.check(manual))
+  ipcMain.handle('update:status', () => updater.status())
+  ipcMain.on('update:install', () => updater.install())
   ipcMain.handle('app:legal', async () => {
     try {
       const dir = join(app.getAppPath(), 'out')
@@ -190,7 +190,7 @@ else {
     Menu.setApplicationMenu(null)
     registerIpc()
     createWindow(filesFromArgv(process.argv))
-    if (process.env.CADENCE_PLUS_TEST !== '1' || process.env.CADENCE_UPDATE_API) startUpdater()
+    if (process.env.CADENCE_PLUS_TEST !== '1' || process.env.CADENCE_UPDATE_API) updater.start()
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) createWindow()
     })

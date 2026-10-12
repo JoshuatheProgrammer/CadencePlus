@@ -2,14 +2,8 @@
 
 /** Image formats Chromium decodes natively (8-bit). PSD/TIFF/RAW need libraries later. */
 /** Auto-update progress, pushed from the main process. */
-export type UpdateStatus =
-  | { state: 'idle' }
-  | { state: 'checking' }
-  | { state: 'none'; version: string }
-  | { state: 'downloading'; version?: string; percent: number }
-  | { state: 'ready'; version: string }
-  | { state: 'error'; message: string }
-  | { state: 'disabled'; message: string }
+export type { UpdateStatus } from '@cadence/release/updater'
+import type { UpdateStatus } from '@cadence/release/updater'
 
 export const IMAGE_EXTENSIONS = ['png', 'jpg', 'jpeg', 'webp', 'avif', 'gif', 'bmp', 'tif', 'tiff', 'psd']
 /** Camera RAW formats (developed with LibRaw). Keep in sync with engine/io RAW_EXTENSIONS. */
