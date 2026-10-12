@@ -1799,6 +1799,17 @@ await check('home screen: Recent shows a live preview, folder and details of eac
   return cards.map((c) => `${c.name}${c.missing ? ' (missing)' : ''}`).join(', ')
 })
 
+await check('About → Licences shows the MIT licence and every bundled component, including LibRaw under LGPL-2.1', async () => {
+  await ev(() => window.__cadencePlus.run('help.about'))
+  await win.click('.modal button:has-text("Licences")')
+  await win.waitForSelector('.legal-text', { timeout: 5000 })
+  const text = await win.locator('.legal-text').textContent()
+  for (const s of ['MIT License', 'GNU LESSER GENERAL PUBLIC LICENSE', 'Version 2.1, February 1999', 'libraw-wasm 1.6.0', 'ag-psd', 'react-dom', 'app.asar.unpacked'])
+    expect(text.includes(s), `missing "${s}"`)
+  await win.keyboard.press('Escape')
+  return `${Math.round(text.length / 1024)} KB of licence text`
+})
+
 await check('tool groups: rail shows one slot per group; right-click lists the group', async () => {
   await win.keyboard.press('o')
   const slot = win.locator('.tool-btn.active')

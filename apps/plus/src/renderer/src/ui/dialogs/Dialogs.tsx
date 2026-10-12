@@ -479,14 +479,54 @@ function ExportDialog() {
 
 function AboutDialog() {
   const v = window.cadencePlus.versions
+  const [legal, setLegal] = useState<{ license: string; notices: string } | null | 'loading' | 'hidden'>('hidden')
+  if (legal !== 'hidden') {
+    return (
+      <Modal
+        title="Open-source licences"
+        onClose={close}
+        width={720}
+        actions={
+          <>
+            <button className="btn" onClick={() => setLegal('hidden')} style={{ marginRight: 'auto' }}>
+              Back
+            </button>
+            <button className="btn primary" onClick={close}>
+              Close
+            </button>
+          </>
+        }
+      >
+        {legal === 'loading' ? (
+          <div className="note">Loading…</div>
+        ) : legal === null ? (
+          <div className="note">The licence texts are generated when the app is built (npm run build); they are not available in a development session.</div>
+        ) : (
+          <pre className="legal-text">{`${legal.license}\n\n${legal.notices}`}</pre>
+        )}
+      </Modal>
+    )
+  }
   return (
     <Modal
       title="About Cadence+"
       onClose={close}
       actions={
-        <button className="btn primary" onClick={close}>
-          Close
-        </button>
+        <>
+          <button
+            className="btn"
+            style={{ marginRight: 'auto' }}
+            onClick={() => {
+              setLegal('loading')
+              void window.cadencePlus.legalTexts().then(setLegal)
+            }}
+          >
+            Licences…
+          </button>
+          <button className="btn primary" onClick={close}>
+            Close
+          </button>
+        </>
       }
     >
       <div style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
@@ -495,12 +535,12 @@ function AboutDialog() {
           <div style={{ fontSize: 18, fontWeight: 600 }}>
             <Wordmark />
           </div>
-          <div className="note">Image editor · version {v.app}</div>
+          <div className="note">Precision imaging for creators · version {v.app}</div>
           <div className="note">
             Electron {v.electron} · Chromium {v.chrome}
           </div>
           <div className="note" style={{ marginTop: 6 }}>
-            Sibling of Cadence. 8-bit RGB, tile-based layers, GPU compositing.
+            Free and open source under the MIT licence. Part of the Cadence suite.
           </div>
         </div>
       </div>

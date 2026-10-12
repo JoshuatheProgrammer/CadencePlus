@@ -32,6 +32,8 @@ const api: CadencePlusApi = {
   getThumbnail: (p) => ipcRenderer.invoke('thumbs:get', p),
   putThumbnail: (p, png, meta) => ipcRenderer.invoke('thumbs:put', p, png, meta),
 
+  legalTexts: () => ipcRenderer.invoke('app:legal'),
+
   getSettings: () => ipcRenderer.invoke('settings:get'),
   setSetting: (k, v) => ipcRenderer.invoke('settings:set', k, v),
   addRecent: (p) => ipcRenderer.invoke('settings:addRecent', p),

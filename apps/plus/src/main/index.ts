@@ -106,6 +106,15 @@ function registerIpc(): void {
     const r = await dialog.showOpenDialog(win(e), { title, properties: ['openDirectory', 'createDirectory'] })
     return r.canceled || !r.filePaths[0] ? null : r.filePaths[0]
   })
+  ipcMain.handle('app:legal', async () => {
+    try {
+      const dir = join(app.getAppPath(), 'out')
+      const [license, notices] = await Promise.all([fsp.readFile(join(dir, 'LICENSE.txt'), 'utf8'), fsp.readFile(join(dir, 'THIRD_PARTY_NOTICES.txt'), 'utf8')])
+      return { license, notices }
+    } catch {
+      return null
+    }
+  })
   ipcMain.handle('fs:stat', async (_e, path: string) => {
     try {
       const s = await fsp.stat(path)

@@ -1703,3 +1703,17 @@
 .recent-card.missing .n {
   opacity: 0.5;
 }
+
+/* ---------- Licences ---------- */
+.legal-text {
+  margin: 0;
+  max-height: 60vh;
+  overflow: auto;
+  padding: 10px 12px;
+  background: var(--c-inset);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius);
+  font: 11px / 1.45 var(--mono);
+  white-space: pre-wrap;
+  user-select: text;
+}

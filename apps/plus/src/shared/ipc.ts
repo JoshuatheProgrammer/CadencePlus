@@ -53,6 +53,9 @@ export interface CadencePlusApi {
   getThumbnail(path: string): Promise<{ png: Uint8Array; meta: Record<string, unknown> & { mtime: number } } | null>
   putThumbnail(path: string, png: Uint8Array, meta: Record<string, unknown>): Promise<void>
 
+  /** The app's licence and third-party notices (generated at build time; null in development). */
+  legalTexts(): Promise<{ license: string; notices: string } | null>
+
   getSettings(): Promise<Record<string, unknown>>
   setSetting(key: string, value: unknown): Promise<void>
   /** Moves `path` to the top of the recent-files list and returns the list. */
