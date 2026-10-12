@@ -1,6 +1,16 @@
 /** The typed `window.cadencePlus` API exposed by the preload script. */
 
 /** Image formats Chromium decodes natively (8-bit). PSD/TIFF/RAW need libraries later. */
+/** Auto-update progress, pushed from the main process. */
+export type UpdateStatus =
+  | { state: 'idle' }
+  | { state: 'checking' }
+  | { state: 'none'; version: string }
+  | { state: 'downloading'; version?: string; percent: number }
+  | { state: 'ready'; version: string }
+  | { state: 'error'; message: string }
+  | { state: 'disabled'; message: string }
+
 export const IMAGE_EXTENSIONS = ['png', 'jpg', 'jpeg', 'webp', 'avif', 'gif', 'bmp', 'tif', 'tiff', 'psd']
 /** Camera RAW formats (developed with LibRaw). Keep in sync with engine/io RAW_EXTENSIONS. */
 export const RAW_FILE_EXTENSIONS = ['dng', 'cr2', 'cr3', 'crw', 'nef', 'nrw', 'arw', 'srf', 'sr2', 'raf', 'orf', 'rw2', 'pef', 'srw', 'x3f', '3fr', 'iiq', 'erf', 'kdc', 'mrw']
@@ -55,6 +65,13 @@ export interface CadencePlusApi {
 
   /** The app's licence and third-party notices (generated at build time; null in development). */
   legalTexts(): Promise<{ license: string; notices: string } | null>
+
+  /** Checks GitHub for a newer version and downloads it (`manual`: report the outcome even when up to date). */
+  checkForUpdates(manual?: boolean): Promise<UpdateStatus>
+  getUpdateStatus(): Promise<UpdateStatus>
+  /** Restarts into a downloaded update. */
+  installUpdate(): void
+  onUpdateStatus(cb: (s: UpdateStatus) => void): () => void
 
   getSettings(): Promise<Record<string, unknown>>
   setSetting(key: string, value: unknown): Promise<void>

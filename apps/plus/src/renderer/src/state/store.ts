@@ -4,6 +4,7 @@
  */
 import type { FilterKind, ToneRange } from '@core/filters'
 import type { EffectKind, LayerEffects } from '@core/effects'
+import type { UpdateStatus } from '@shared/ipc'
 import { DEFAULT_PRESETS, type ExportPreset } from '@core/export-presets'
 import { create } from 'zustand'
 import type { AdjustmentKind } from '@core/adjustments'
@@ -141,6 +142,8 @@ export interface EditorState {
   viewport: { w: number; h: number }
   stroke: StrokePreview | null
   filterPreview: FilterPreview | null
+  /** Auto-update progress (main process). */
+  update: UpdateStatus
   /** File → Export with Presets (saved in settings). */
   exportPresets: ExportPreset[]
   /** Layer Style dialog preview. */
@@ -196,6 +199,7 @@ export const useEditor = create<EditorState>(() => ({
   filterPreview: null,
   effectsPreview: null,
   exportPresets: structuredClone(DEFAULT_PRESETS),
+  update: { state: 'idle' },
   crop: null,
   busy: null,
   maskView: null,

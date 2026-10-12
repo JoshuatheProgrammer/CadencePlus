@@ -9,7 +9,8 @@ function on<T extends unknown[]>(channel: string, cb: (...args: T) => void): () 
 
 const api: CadencePlusApi = {
   platform: process.platform,
-  versions: { app: process.env.npm_package_version ?? '0.1.0', electron: process.versions.electron, chrome: process.versions.chrome },
+  // The main process passes its version (app.getVersion()) as a launch argument.
+  versions: { app: process.argv.find((a) => a.startsWith('--cadence-version='))?.split('=')[1] ?? '0.0.0', electron: process.versions.electron, chrome: process.versions.chrome },
   isTest: process.env.CADENCE_PLUS_TEST === '1',
 
   openDialog: () => ipcRenderer.invoke('dialog:open'),
@@ -33,6 +34,11 @@ const api: CadencePlusApi = {
   putThumbnail: (p, png, meta) => ipcRenderer.invoke('thumbs:put', p, png, meta),
 
   legalTexts: () => ipcRenderer.invoke('app:legal'),
+
+  checkForUpdates: (manual = false) => ipcRenderer.invoke('update:check', manual),
+  getUpdateStatus: () => ipcRenderer.invoke('update:status'),
+  installUpdate: () => ipcRenderer.send('update:install'),
+  onUpdateStatus: (cb) => on('update:status', cb),
 
   getSettings: () => ipcRenderer.invoke('settings:get'),
   setSetting: (k, v) => ipcRenderer.invoke('settings:set', k, v),

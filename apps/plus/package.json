@@ -16,9 +16,10 @@
     "test:watch": "vitest",
     "shot": "node scripts/screenshot.mjs",
     "e2e": "node scripts/e2e.mjs",
-    "perf": "node scripts/perf.mjs"
+    "perf": "node scripts/perf.mjs",
+    "pack": "npm run build && electron-builder --config electron-builder.config.cjs --win --dir --publish never",
+    "dist": "npm run build && electron-builder --config electron-builder.config.cjs --win --publish never"
   },
-  "dependencies": {},
   "devDependencies": {
     "@cadence/core": "0.1.0",
     "@cadence/ui": "0.1.0",
@@ -29,6 +30,7 @@
     "ag-psd": "^31.0.3",
     "dockview-react": "^8.4.1",
     "electron": "^44.7.0",
+    "electron-builder": "^26.15.3",
     "electron-vite": "^5.0.0",
     "immer": "^11.1.21",
     "libraw-wasm": "^1.6.0",
@@ -40,5 +42,8 @@
     "vite": "^7.3.7",
     "vitest": "^4.1.11",
     "zustand": "^5.0.15"
+  },
+  "dependencies": {
+    "electron-updater": "^6.8.9"
   }
 }

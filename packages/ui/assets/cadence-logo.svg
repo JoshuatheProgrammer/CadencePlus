@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <!-- The Cadence mark: three stacked layers in ice blue on a graphite tile (same geometry as the in-app Logo). -->
+  <rect x="1" y="1" width="30" height="30" rx="6" fill="#23262d" stroke="#3c414c" stroke-width="1"/>
+  <g stroke-linejoin="round">
+    <path d="M16 16.8L25.2 21.4L16 26L6.8 21.4Z" fill="#23262d" stroke="#23262d" stroke-width="2.6"/>
+    <path d="M16 16.8L25.2 21.4L16 26L6.8 21.4Z" fill="#69b7ff" opacity="0.45"/>
+    <path d="M16 11.6L25.2 16.2L16 20.8L6.8 16.2Z" fill="#23262d" stroke="#23262d" stroke-width="2.6"/>
+    <path d="M16 11.6L25.2 16.2L16 20.8L6.8 16.2Z" fill="#69b7ff" opacity="0.7"/>
+    <path d="M16 6.4L25.2 11L16 15.6L6.8 11Z" fill="#23262d" stroke="#23262d" stroke-width="2.6"/>
+    <path d="M16 6.4L25.2 11L16 15.6L6.8 11Z" fill="#69b7ff"/>
+  </g>
+</svg>

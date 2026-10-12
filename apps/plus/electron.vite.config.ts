@@ -2,6 +2,7 @@ import { defineConfig } from 'electron-vite'
 import type { Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
 import { resolve } from 'node:path'
+import { readFileSync } from 'node:fs'
 
 const alias = {
   '@core': resolve(__dirname, 'src/core'),
@@ -24,9 +25,13 @@ function bundledPackages(): Plugin {
   }
 }
 
+// Where releases live (one file for the whole suite; see release.config.json).
+const release = JSON.parse(readFileSync(resolve(__dirname, '../../release.config.json'), 'utf8')) as { owner: string; repo: string }
+
 export default defineConfig({
   main: {
     resolve: { alias },
+    define: { __RELEASE__: JSON.stringify({ owner: release.owner, repo: release.repo }) },
     build: { rollupOptions: { input: { index: resolve(__dirname, 'src/main/index.ts') } } }
   },
   preload: {

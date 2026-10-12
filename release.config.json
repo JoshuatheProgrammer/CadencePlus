@@ -1,0 +1,5 @@
+{
+  "$comment": "Where releases are published. Replace YOUR_GITHUB with your GitHub user or organisation before the first release; repo is the repository holding the whole Cadence monorepo.",
+  "owner": "YOUR_GITHUB",
+  "repo": "cadence"
+}

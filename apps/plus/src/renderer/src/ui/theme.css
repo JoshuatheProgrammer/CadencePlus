@@ -1717,3 +1717,17 @@
   white-space: pre-wrap;
   user-select: text;
 }
+
+/* ---------- Updates ---------- */
+.statusbar .update-ready {
+  border: none;
+  border-radius: var(--radius);
+  background: var(--c-accent);
+  color: var(--c-accent-ink);
+  font: 600 var(--fs-sm) var(--font);
+  padding: 1px 8px;
+  cursor: default;
+}
+.statusbar .update-ready:hover {
+  background: var(--c-accent-hover);
+}

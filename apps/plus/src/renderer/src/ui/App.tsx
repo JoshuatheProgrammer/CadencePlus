@@ -9,7 +9,7 @@ import { command, currentColor, handleKeydown, keysFor, run } from '../state/com
 import { confirmQuit, displayName, forgetRecent, formatBytes, newDocument, openDialog, openPaths, setZoom, titleFor } from '../state/doc-actions'
 import { ago, recentInfo, type RecentInfo } from '../state/thumbnails'
 import * as A from '../state/image-actions'
-import { activeDocState, get, isDirty, set, useEditor, type PanelId } from '../state/store'
+import { activeDocState, get, isDirty, set, toast, useEditor, type PanelId } from '../state/store'
 import { groupOf, toolCommand, TOOLS, type ToolDef } from '../state/tools'
 import { CanvasPanel } from './canvas/CanvasPanel'
 import { ContextMenuHost, showContextMenu } from '@cadence/ui/components'
@@ -261,7 +261,7 @@ function menus(): Record<string, MenuEntry[]> {
       { sep: true },
       { label: 'Reset Workspace', action: resetWorkspace }
     ],
-    Help: [{ cmd: 'help.shortcuts', label: 'Keyboard Shortcuts…' }, { cmd: 'help.about' }]
+    Help: [{ cmd: 'help.shortcuts', label: 'Keyboard Shortcuts…' }, { sep: true }, { cmd: 'help.updates' }, { cmd: 'help.about' }]
   }
 }
 
@@ -490,6 +490,18 @@ function ZoomField() {
   )
 }
 
+/** Status-bar note while an update downloads, and a restart button once it is ready. */
+function UpdateBadge() {
+  const u = useEditor((s) => s.update)
+  if (u.state === 'downloading') return <span title="Downloading the new version in the background">Updating… {u.percent}%</span>
+  if (u.state !== 'ready') return null
+  return (
+    <button className="update-ready" title="Restart now to install it (you'll be asked about unsaved work); otherwise it installs when you quit" onClick={() => window.cadencePlus.installUpdate()}>
+      Update {u.version} ready — Restart
+    </button>
+  )
+}
+
 function StatusBar() {
   const ds = useEditor((s) => activeDocState(s))
   const cursor = useEditor((s) => s.cursor)
@@ -523,6 +535,7 @@ function StatusBar() {
       )}
       <span className="grow" />
       {mem && <span title="Pixel memory held for open documents and their undo history">{mem}</span>}
+      <UpdateBadge />
       <span>{busy ?? 'Ready'}</span>
     </div>
   )
@@ -691,6 +704,11 @@ export function App() {
       })
     })
     const stopFormat = startFormatSync()
+    void window.cadencePlus.getUpdateStatus().then((update) => set({ update }))
+    const offUpdate = window.cadencePlus.onUpdateStatus((update) => {
+      set({ update })
+      if (update.state === 'ready') toast(`Cadence+ ${update.version} is ready. Restart from the status bar, or it installs when you quit.`, 'success')
+    })
     const stopAutosave = startAutosave()
     void offerRecovery()
     const onKey = (e: KeyboardEvent) => void handleKeydown(e)
@@ -715,6 +733,7 @@ export function App() {
     window.addEventListener('drop', stop)
     installTestHooks()
     return () => {
+      offUpdate()
       window.removeEventListener('keydown', onKey)
       window.removeEventListener('dragover', stop)
       window.removeEventListener('drop', stop)

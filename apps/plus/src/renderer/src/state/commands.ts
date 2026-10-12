@@ -196,6 +196,7 @@ export const COMMANDS: Command[] = [
 
   // Help
   { id: 'help.shortcuts', label: 'Keyboard Shortcuts', keys: ['Ctrl+/'], run: () => set({ dialog: { kind: 'shortcuts' } }) },
+  { id: 'help.updates', label: 'Check for Updates…', run: () => void checkUpdatesNow() },
   { id: 'help.about', label: 'About Cadence+', run: () => set({ dialog: { kind: 'about' } }) },
 
   // Tools & colours
@@ -293,6 +294,14 @@ function nudge(dx: number, dy: number): void {
   const t = get().transform
   if (t) return T.updateTransform({ ...t.params, cx: t.params.cx + dx, cy: t.params.cy + dy })
   if (get().tool === 'move') A.nudgeActive(dx, dy)
+}
+
+async function checkUpdatesNow(): Promise<void> {
+  const s = await window.cadencePlus.checkForUpdates(true)
+  if (s.state === 'none') toast(`Cadence+ ${s.version} is the latest version.`, 'success')
+  else if (s.state === 'disabled') toast(s.message, 'info')
+  else if (s.state === 'error') toast(`Could not check for updates.\n${s.message}`, 'error')
+  else if (s.state === 'downloading') toast(`Downloading Cadence+ ${s.version ?? ''}… you'll be asked to restart when it's ready.`, 'info')
 }
 
 function setOpacityKey(k: string): void {
