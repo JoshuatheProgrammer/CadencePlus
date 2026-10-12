@@ -1,0 +1,38 @@
+{
+  "name": "cadence-hub",
+  "productName": "Cadence Hub",
+  "version": "0.1.0",
+  "description": "Cadence Hub — installs, updates and launches the free Cadence apps",
+  "license": "MIT",
+  "author": "The Cadence contributors",
+  "private": true,
+  "main": "out/main/index.js",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build && node ../../scripts/notices.mjs .",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "pack": "npm run build && electron-builder --config electron-builder.config.cjs --win --dir --publish never",
+    "dist": "npm run build && electron-builder --config electron-builder.config.cjs --win --publish never",
+    "e2e": "node scripts/e2e.mjs"
+  },
+  "dependencies": {
+    "electron-updater": "^6.8.9"
+  },
+  "devDependencies": {
+    "@cadence/release": "0.1.0",
+    "@cadence/ui": "0.1.0",
+    "@types/node": "^26.6.5",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^5.2.0",
+    "electron": "^44.7.0",
+    "electron-builder": "^26.15.3",
+    "electron-vite": "^5.0.0",
+    "playwright": "^1.64.0",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "typescript": "^7.0.2",
+    "vite": "^7.3.7",
+    "zustand": "^5.0.15"
+  }
+}

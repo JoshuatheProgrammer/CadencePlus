@@ -8,7 +8,8 @@
     "./base.css": "./src/base.css",
     "./components": "./src/components.tsx",
     "./Tooltip": "./src/Tooltip.tsx",
-    "./tokens": "./src/tokens.ts"
+    "./tokens": "./src/tokens.ts",
+    "./assets/*": "./assets/*"
   },
   "peerDependencies": {
     "react": "^19.3.0",

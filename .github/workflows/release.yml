@@ -1,6 +1,6 @@
 # Builds, signs and publishes one Cadence app when its release tag is pushed:
 #   plus-v1.2.3  → Cadence+        (apps/plus)
-#   hub-v1.2.3   → Cadence hub     (apps/hub)
+#   hub-v1.2.3   → Cadence Hub     (apps/hub)
 #   video-v1.2.3 → Cadence Video   (apps/video, once it joins the monorepo)
 #
 # Signing: when the SignPath settings below exist (repository variables
@@ -36,7 +36,7 @@ jobs:
           tag="${GITHUB_REF_NAME}"
           case "$tag" in
             plus-v*)  dir=apps/plus;  ws=cadence-plus;  exe=CadencePlus.exe;  name="Cadence+" ;;
-            hub-v*)   dir=apps/hub;   ws=cadence-hub;   exe=Cadence.exe;      name="Cadence" ;;
+            hub-v*)   dir=apps/hub;   ws=cadence-hub;   exe=CadenceHub.exe;   name="Cadence Hub" ;;
             video-v*) dir=apps/video; ws=cadence-video; exe=CadenceVideo.exe; name="Cadence Video" ;;
             *) echo "Unknown tag $tag"; exit 1 ;;
           esac

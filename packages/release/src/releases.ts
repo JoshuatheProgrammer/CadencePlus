@@ -37,7 +37,8 @@ export const repoConfigured = (r: ReleaseRepo): boolean => !!process.env.CADENCE
 /** The newest published (non-draft, non-pre-release) release with `prefix`, or null. */
 export async function latestRelease(r: ReleaseRepo, prefix: string): Promise<FoundRelease | null> {
   const api = process.env.CADENCE_UPDATE_API ?? `https://api.github.com/repos/${r.owner}/${r.repo}`
-  const res = await net.fetch(`${api}/releases?per_page=50`, { headers: { Accept: 'application/vnd.github+json', 'User-Agent': 'Cadence' } })
+  // Never from the HTTP cache: "Check again" must see a release published a minute ago.
+  const res = await net.fetch(`${api}/releases?per_page=50`, { cache: 'no-store', headers: { Accept: 'application/vnd.github+json', 'User-Agent': 'Cadence' } })
   if (!res.ok) throw new Error(res.status === 404 ? 'The release repository was not found.' : `GitHub answered ${res.status} ${res.statusText}.`)
   const list = (await res.json()) as { tag_name: string; draft: boolean; prerelease: boolean }[]
   let best: string | null = null
@@ -53,7 +54,7 @@ export async function latestRelease(r: ReleaseRepo, prefix: string): Promise<Fou
 
 /** The installer named in a release's latest.yml, with its SHA-512. */
 export async function releaseInstaller(rel: FoundRelease): Promise<{ url: string; file: string; sha512: string }> {
-  const res = await net.fetch(`${rel.base}/latest.yml`)
+  const res = await net.fetch(`${rel.base}/latest.yml`, { cache: 'no-store' })
   if (!res.ok) throw new Error(`The release ${rel.tag} has no latest.yml (${res.status}).`)
   const yml = await res.text()
   const file = /^path:\s*(.+)$/m.exec(yml)?.[1]?.trim().replace(/^['"]|['"]$/g, '')

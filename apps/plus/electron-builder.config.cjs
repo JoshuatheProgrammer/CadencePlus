@@ -40,6 +40,8 @@ module.exports = {
     createDesktopShortcut: true,
     createStartMenuShortcut: true,
     shortcutName: 'Cadence+',
+    // What Windows lists under Apps (and what Cadence Hub looks for).
+    uninstallDisplayName: 'Cadence+',
     menuCategory: 'Cadence',
     installerIcon: 'build/icon.ico',
     uninstallerIcon: 'build/icon.ico',

@@ -7,7 +7,7 @@ releases carry its own tag prefix, and the apps update themselves from them.
 | App | Folder | Tag | Installer |
 |---|---|---|---|
 | Cadence+ | `apps/plus` | `plus-v1.2.3` | `Cadence-Plus-Setup-1.2.3.exe` |
-| Cadence (hub) | `apps/hub` | `hub-v1.2.3` | `Cadence-Setup-1.2.3.exe` |
+| Cadence Hub | `apps/hub` | `hub-v1.2.3` | `Cadence-Hub-Setup-1.2.3.exe` |
 | Cadence Video | `apps/video` | `video-v1.2.3` | `Cadence-Video-Setup-1.2.3.exe` |
 
 ## One-time setup
