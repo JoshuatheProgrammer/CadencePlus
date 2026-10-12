@@ -1,0 +1,145 @@
+# Builds, signs and publishes one Cadence app when its release tag is pushed:
+#   plus-v1.2.3  → Cadence+        (apps/plus)
+#   hub-v1.2.3   → Cadence hub     (apps/hub)
+#   video-v1.2.3 → Cadence Video   (apps/video, once it joins the monorepo)
+#
+# Signing: when the SignPath settings below exist (repository variables
+# SIGNPATH_ORGANIZATION_ID, SIGNPATH_PROJECT_SLUG, SIGNPATH_POLICY_SLUG and
+# the secret SIGNPATH_API_TOKEN), the app executable is signed before the
+# installer is built, then the installer itself; latest.yml is updated to
+# match. Without them the release is published unsigned. See docs/RELEASING.md.
+name: Release
+
+on:
+  push:
+    tags: ['plus-v*', 'hub-v*', 'video-v*']
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  release:
+    runs-on: windows-latest
+    env:
+      SIGN: ${{ vars.SIGNPATH_ORGANIZATION_ID != '' }}
+      # The certificate's subject name (e.g. "SignPath Foundation"); installed apps then
+      # verify that updates are signed by it.
+      CADENCE_PUBLISHER_NAME: ${{ vars.SIGNPATH_PUBLISHER_NAME }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Which app?
+        id: app
+        shell: bash
+        run: |
+          tag="${GITHUB_REF_NAME}"
+          case "$tag" in
+            plus-v*)  dir=apps/plus;  ws=cadence-plus;  exe=CadencePlus.exe;  name="Cadence+" ;;
+            hub-v*)   dir=apps/hub;   ws=cadence-hub;   exe=Cadence.exe;      name="Cadence" ;;
+            video-v*) dir=apps/video; ws=cadence-video; exe=CadenceVideo.exe; name="Cadence Video" ;;
+            *) echo "Unknown tag $tag"; exit 1 ;;
+          esac
+          version="${tag#*-v}"
+          pkg_version=$(node -p "require('./$dir/package.json').version")
+          if [ "$pkg_version" != "$version" ]; then echo "Tag $tag does not match $dir/package.json version $pkg_version"; exit 1; fi
+          { echo "dir=$dir"; echo "ws=$ws"; echo "exe=$exe"; echo "name=$name"; echo "version=$version"; } >> $GITHUB_OUTPUT
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+
+      - name: Type-check and unit tests
+        run: |
+          npm run typecheck -w ${{ steps.app.outputs.ws }}
+          npm test -w ${{ steps.app.outputs.ws }} --if-present
+
+      - name: Build the app (unpacked)
+        working-directory: ${{ steps.app.outputs.dir }}
+        run: |
+          npm run build
+          npx electron-builder --config electron-builder.config.cjs --win --dir --publish never
+
+      # --- Sign the app executable -----------------------------------------
+      - name: Upload the unsigned app for signing
+        if: env.SIGN == 'true'
+        id: unsigned-app
+        uses: actions/upload-artifact@v4
+        with:
+          name: unsigned-app
+          path: ${{ steps.app.outputs.dir }}/dist/win-unpacked/${{ steps.app.outputs.exe }}
+
+      - name: Sign the app executable (SignPath)
+        if: env.SIGN == 'true'
+        uses: signpath/github-action-submit-signing-request@v1
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG }}
+          signing-policy-slug: ${{ vars.SIGNPATH_POLICY_SLUG }}
+          artifact-configuration-slug: executable
+          github-artifact-id: ${{ steps.unsigned-app.outputs.artifact-id }}
+          wait-for-completion: true
+          output-artifact-directory: signed-app
+
+      - name: Use the signed executable
+        if: env.SIGN == 'true'
+        shell: bash
+        run: cp "signed-app/${{ steps.app.outputs.exe }}" "${{ steps.app.outputs.dir }}/dist/win-unpacked/${{ steps.app.outputs.exe }}"
+
+      # --- Installer ---------------------------------------------------------
+      - name: Build the installer from the (signed) app
+        working-directory: ${{ steps.app.outputs.dir }}
+        run: npx electron-builder --config electron-builder.config.cjs --win nsis --prepackaged dist/win-unpacked --publish never
+
+      - name: Find the installer
+        id: installer
+        shell: bash
+        run: |
+          f=$(ls ${{ steps.app.outputs.dir }}/dist/*Setup-${{ steps.app.outputs.version }}.exe)
+          { echo "path=$f"; echo "file=$(basename "$f")"; } >> $GITHUB_OUTPUT
+
+      - name: Upload the unsigned installer for signing
+        if: env.SIGN == 'true'
+        id: unsigned-installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: unsigned-installer
+          path: ${{ steps.installer.outputs.path }}
+
+      - name: Sign the installer (SignPath)
+        if: env.SIGN == 'true'
+        uses: signpath/github-action-submit-signing-request@v1
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG }}
+          signing-policy-slug: ${{ vars.SIGNPATH_POLICY_SLUG }}
+          artifact-configuration-slug: installer
+          github-artifact-id: ${{ steps.unsigned-installer.outputs.artifact-id }}
+          wait-for-completion: true
+          output-artifact-directory: signed-installer
+
+      - name: Use the signed installer and update latest.yml
+        if: env.SIGN == 'true'
+        shell: bash
+        run: |
+          f="${{ steps.installer.outputs.path }}"
+          cp "signed-installer/$(basename "$f")" "$f"
+          node scripts/release-yml.mjs "${{ steps.app.outputs.dir }}/dist/latest.yml" "$f"
+
+      - name: Publish the GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: ${{ steps.app.outputs.name }} ${{ steps.app.outputs.version }}
+          body: |
+            ${{ steps.app.outputs.name }} ${{ steps.app.outputs.version }} for Windows.
+
+            Download **${{ steps.installer.outputs.file }}** below, or install and update it from the Cadence hub. Installed copies update themselves.
+            ${{ env.SIGN == 'true' && 'The installer and app are code-signed (SignPath Foundation).' || 'This build is not code-signed yet, so Windows SmartScreen may warn before running it (More info → Run anyway).' }}
+          files: |
+            ${{ steps.installer.outputs.path }}
+            ${{ steps.app.outputs.dir }}/dist/latest.yml

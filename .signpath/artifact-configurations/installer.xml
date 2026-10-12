@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  SignPath artifact configuration "installer" (slug: installer).
+  The release workflow uploads the NSIS installer (…-Setup-<version>.exe) as a
+  GitHub artifact; GitHub wraps it in a zip, and SignPath signs the installer
+  inside with Authenticode.
+  Paste this into SignPath: Project → Artifact configurations → New.
+-->
+<artifact-configuration xmlns="http://signpath.io/artifact-configuration/v1">
+  <zip-file>
+    <pe-file path="*-Setup-*.exe">
+      <authenticode-sign />
+    </pe-file>
+  </zip-file>
+</artifact-configuration>

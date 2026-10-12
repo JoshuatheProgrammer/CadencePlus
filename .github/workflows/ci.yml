@@ -1,0 +1,23 @@
+# Checks every push and pull request: types, unit tests and a production
+# build of each app. (The end-to-end suites drive real windows and run
+# locally: npm run plus:e2e.)
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build --workspaces --if-present

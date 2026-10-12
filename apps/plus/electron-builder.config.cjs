@@ -28,7 +28,9 @@ module.exports = {
     icon: 'build/icon.ico',
     artifactName: 'Cadence-Plus-Setup-${version}.${ext}',
     // Signed in CI by SignPath; local builds are unsigned.
-    signAndEditExecutable: true
+    signAndEditExecutable: true,
+    // Once releases are signed, installed copies accept updates only from this publisher.
+    ...(process.env.CADENCE_PUBLISHER_NAME ? { signtoolOptions: { publisherName: [process.env.CADENCE_PUBLISHER_NAME] } } : {})
   },
   nsis: {
     oneClick: false,
