@@ -6,6 +6,7 @@
  */
 import type { ShaderFilter, ShaderOp } from '@core/adjustments'
 import { scaleShaderOp } from '@core/filters'
+import { invertH, type Mat3 } from '@core/homography'
 import { ctx2d, pipelineFormat } from './format'
 import type { Ctx2D } from './tiles'
 
@@ -242,4 +243,83 @@ export function drawShaderOp(ctx: Ctx2D, src: Source, op0: ShaderOp, scale = 1):
   g.clear(g.COLOR_BUFFER_BIT)
   g.drawArrays(g.TRIANGLE_STRIP, 0, 4)
   ctx.drawImage(G.canvas, 0, 0)
+}
+
+// ---------------------------------------------------------------------------
+// Projective warp (Distort / Perspective)
+// ---------------------------------------------------------------------------
+
+const WARP_FS = `#version 300 es
+precision highp float;
+uniform sampler2D src;
+uniform mat3 hinv;     // output pixel → source pixel
+uniform vec2 srcSize;
+uniform vec2 outSize;
+out vec4 o;
+void main() {
+  vec2 t = vec2(gl_FragCoord.x, outSize.y - gl_FragCoord.y);
+  vec3 l = hinv * vec3(t, 1.0);
+  if (l.z <= 0.0) { o = vec4(0.0); return; }
+  vec2 p = l.xy / l.z;
+  // Soft one-pixel edge so warped borders are antialiased.
+  vec2 e = min(p, srcSize - p) + 0.5;
+  float cover = clamp(min(e.x, e.y), 0.0, 1.0);
+  o = cover <= 0.0 ? vec4(0.0) : texture(src, clamp(p, vec2(0.5), srcSize - 0.5) / srcSize) * cover;
+}`
+
+let warpProg: WebGLProgram | null = null
+
+/**
+ * Draws `src` warped by `h` (source pixel → output pixel, row-major 3×3)
+ * into `ctx` at the origin, over an outW × outH area. Interpolates
+ * premultiplied colour, so edges don't darken. False without WebGL2.
+ */
+export function drawWarped(ctx: Ctx2D, src: Source, h: Mat3, outW: number, outH: number): boolean {
+  if (gpu === undefined) gpu = init()
+  if (!gpu || outW <= 0 || outH <= 0 || src.width === 0 || src.height === 0) return false
+  const G = gpu
+  const g = G.gl
+  if (!warpProg) {
+    const p = g.createProgram()!
+    g.attachShader(p, G.sh(g.VERTEX_SHADER, VS))
+    g.attachShader(p, G.sh(g.FRAGMENT_SHADER, WARP_FS))
+    g.linkProgram(p)
+    if (!g.getProgramParameter(p, g.LINK_STATUS)) throw new Error(g.getProgramInfoLog(p) ?? 'link')
+    warpProg = p
+  }
+  g.useProgram(warpProg)
+  const loc = g.getAttribLocation(warpProg, 'p')
+  g.enableVertexAttribArray(loc)
+  g.vertexAttribPointer(loc, 2, g.FLOAT, false, 0, 0)
+  const f = pipelineFormat()
+  const ext = g as WebGL2RenderingContext & { unpackColorSpace: PredefinedColorSpace; drawingBufferColorSpace: PredefinedColorSpace; drawingBufferStorage?: (fmt: number, w: number, h: number) => void }
+  ext.unpackColorSpace = f.space
+  ext.drawingBufferColorSpace = f.space
+  if (G.canvas.width !== outW || G.canvas.height !== outH) {
+    G.canvas.width = outW
+    G.canvas.height = outH
+  }
+  const float = f.depth === 16 && typeof ext.drawingBufferStorage === 'function'
+  if (float) ext.drawingBufferStorage!(g.RGBA16F, outW, outH)
+  else if (typeof ext.drawingBufferStorage === 'function') ext.drawingBufferStorage(g.RGBA8, outW, outH)
+  g.viewport(0, 0, outW, outH)
+  g.activeTexture(g.TEXTURE0)
+  g.bindTexture(g.TEXTURE_2D, G.src)
+  g.texParameteri(g.TEXTURE_2D, g.TEXTURE_MIN_FILTER, g.LINEAR)
+  g.texParameteri(g.TEXTURE_2D, g.TEXTURE_MAG_FILTER, g.LINEAR)
+  g.pixelStorei(g.UNPACK_PREMULTIPLY_ALPHA_WEBGL, true)
+  if (float) g.texImage2D(g.TEXTURE_2D, 0, g.RGBA16F, g.RGBA, g.HALF_FLOAT, src)
+  else g.texImage2D(g.TEXTURE_2D, 0, g.RGBA, g.RGBA, g.UNSIGNED_BYTE, src)
+  g.pixelStorei(g.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false)
+  const inv = invertH(h)
+  // GLSL matrices are column-major.
+  g.uniformMatrix3fv(g.getUniformLocation(warpProg, 'hinv'), false, [inv[0], inv[3], inv[6], inv[1], inv[4], inv[7], inv[2], inv[5], inv[8]])
+  g.uniform1i(g.getUniformLocation(warpProg, 'src'), 0)
+  g.uniform2f(g.getUniformLocation(warpProg, 'srcSize'), src.width, src.height)
+  g.uniform2f(g.getUniformLocation(warpProg, 'outSize'), outW, outH)
+  g.clearColor(0, 0, 0, 0)
+  g.clear(g.COLOR_BUFFER_BIT)
+  g.drawArrays(g.TRIANGLE_STRIP, 0, 4)
+  ctx.drawImage(G.canvas, 0, 0)
+  return true
 }
