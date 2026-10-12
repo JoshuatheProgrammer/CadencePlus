@@ -1,6 +1,23 @@
+# Dependencies
 node_modules/
+
+# Build output
 out/
 dist/
+*.tsbuildinfo
+
+# Test and screenshot output
 test-output/
+
+# Logs and OS files
 *.log
 .DS_Store
+Thumbs.db
+desktop.ini
+
+# Local settings and secrets
+.env
+.env.*
+.claude/
+.vscode/
+.idea/
