@@ -623,7 +623,7 @@ function Home() {
           <h1>
             <Wordmark />
           </h1>
-          <div className="sub">Professional image editing</div>
+          <div className="sub">Every pixel, perfected.</div>
           <div className="actions">
             <button className="btn primary" onClick={() => run('file.new')}>
               New…
