@@ -18,7 +18,7 @@ Suites: 58 unit (`npm test`) · 65 end-to-end (`npm run e2e`), all passing.
 | Custom title bar, menus, options bar, tool rail, status bar | ✅ | Menus are excluded from the window drag region. Electron's default menu is removed so Ctrl+R / Ctrl+Shift+I reach the app (tested). |
 | Dockable panels: Layers, Properties, History, Color, Swatches, Navigator | ✅ | dockview. Layout persists; Window → Reset Workspace. |
 | Multiple documents as tabs | ✅ | Ctrl+Tab cycles; middle-click closes. |
-| Home screen with presets and recent files | ✅ | |
+| Home screen with presets and recent files | ✅ | Recent files show a preview of the actual picture, the folder, size, colour mode, layer count and when the file last changed. Previews are rendered when a file is opened or saved, made in the background for older entries, and remade if the file changes on disk; missing files say so. Right-click: Show in Folder, Remove from Recent. |
 | Keyboard shortcuts (Photoshop-style), rebindable | ✅ | Help → Keyboard Shortcuts (Ctrl+/): search, record new keys, remove, reset one or all. A key already in use moves to the new command and the dialog names the previous owner. Saved in settings; menus and tooltips follow. |
 | Styled tooltips, toasts, focus states | ✅ | |
 | Unavailable tools shown disabled with a reason | ✅ | (Every tool in the rail now works.) |

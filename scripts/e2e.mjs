@@ -1743,6 +1743,62 @@ await check('Spot Healing Brush removes a blemish from textured surroundings (no
   return `centre ${centre.slice(0, 3)}, worst deviation from the stripe colours ${worst}`
 })
 
+await check('home screen: Recent shows a live preview, folder and details of each file; missing files say so', async () => {
+  await closeAllClean()
+  const dir = join(work, 'recent').replaceAll('\\', '/')
+  mkdirSync(dir, { recursive: true })
+  await ev(async (dir) => {
+    const { D, A, set } = window.__cadencePlus
+    const make = async (name, w, h, bg, shapes) => {
+      D.newDocument({ name, width: w, height: h, resolution: 72, background: 'white' })
+      A.newFillLayer(bg)
+      for (const [c, kind, x, y, ww, hh] of shapes) {
+        A.newLayer()
+        A.addSelectionShape({ kind, x, y, w: ww, h: hh }, 'replace', 'Select')
+        A.fillWith(c)
+      }
+      A.deselect()
+      const path = dir + '/' + name + '.cadenceimg'
+      set((s) => ({ docs: s.docs.map((d) => (d.id === s.activeId ? { ...d, path } : d)) }))
+      await D.save()
+    }
+    await make('Poster draft', 1200, 1600, '#1d2b45', [['#e6b450', 'ellipse', 300, 300, 600, 600], ['#f26d6d', 'rect', 150, 1100, 900, 220]])
+    await make('Banner', 1500, 500, '#e9eef5', [['#2f6fd6', 'ellipse', 100, 80, 340, 340], ['#c94fb3', 'rect', 600, 150, 700, 200]])
+    await D.exportTo(dir + '/Export.png', 'png', 1)
+  }, dir)
+  await closeAllClean()
+  // A file opened earlier but never previewed, and one that no longer exists.
+  await ev(async (dir) => {
+    await window.cadencePlus.addRecent(dir + '/Gone.psd')
+    window.__cadencePlus.set({ recent: await window.cadencePlus.addRecent(dir + '/Export.png') })
+  }, dir)
+  // Previews of older recent files are made one at a time, so wait for these three.
+  await win.waitForFunction(
+    () => ['Poster draft.cadenceimg', 'Banner.cadenceimg', 'Export.png'].every((n) => [...document.querySelectorAll('.recent-card')].some((c) => c.querySelector('.n')?.textContent === n && c.querySelector('img'))),
+    null,
+    { timeout: 60000 }
+  )
+  const cards = await win.locator('.recent-card').evaluateAll((els) =>
+    els.map((e) => ({ name: e.querySelector('.n')?.textContent, details: e.querySelector('.d')?.textContent, img: !!e.querySelector('img'), missing: e.classList.contains('missing') }))
+  )
+  const byName = Object.fromEntries(cards.map((c) => [c.name, c]))
+  expect(byName['Poster draft.cadenceimg']?.img && /1200 × 1600 · RGB\/8 · 4 layers/.test(byName['Poster draft.cadenceimg'].details), `poster card ${JSON.stringify(byName['Poster draft.cadenceimg'])}`)
+  expect(byName['Export.png']?.img, 'image file got no preview')
+  expect(byName['Gone.psd']?.missing && !byName['Gone.psd'].img, 'missing file not marked')
+  // The preview really shows the picture: the poster's yellow circle is in its thumbnail.
+  const hasYellow = await win.locator('.recent-card', { hasText: 'Poster draft' }).locator('img').evaluate(async (img) => {
+    const c = new OffscreenCanvas(img.naturalWidth, img.naturalHeight)
+    const g = c.getContext('2d')
+    g.drawImage(img, 0, 0)
+    const p = g.getImageData(Math.round(img.naturalWidth / 2), Math.round(img.naturalHeight * 0.375), 1, 1).data
+    return p[0] > 200 && p[1] > 150 && p[2] < 120
+  })
+  expect(hasYellow, 'thumbnail does not show the document')
+  await win.screenshot({ path: join(root, 'test-output', 'home-recent.png') })
+  await newDoc(200, 100)
+  return cards.map((c) => `${c.name}${c.missing ? ' (missing)' : ''}`).join(', ')
+})
+
 await check('tool groups: rail shows one slot per group; right-click lists the group', async () => {
   await win.keyboard.press('o')
   const slot = win.locator('.tool-btn.active')

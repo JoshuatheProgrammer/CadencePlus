@@ -10,6 +10,7 @@ import { collectTileIds, createDocument, DEFAULT_COLOR, docColor, type DocColor,
 import { collectMaskIds } from '@core/selection'
 import { clampZoom, fillView, fitView, formatZoom, nextZoomStep, type View } from '@core/view'
 import { presetFileName, presetScale, type ExportPreset } from '@core/export-presets'
+import { storeThumbnail } from './thumbnails'
 import { baseName, decodeProject, encodeProject, EXPORT_EXTENSION, exportFile, extOf, importImage, type ExportFormat, type ExportOptions } from '../engine/io'
 import { withFormat } from '../engine/format'
 import { PROOF_LABELS } from '../engine/ops'
@@ -193,6 +194,13 @@ async function rememberRecent(path: string): Promise<void> {
   set({ recent: await window.cadencePlus.addRecent(path) })
 }
 
+/** Removes a file from the home screen's Recent list. */
+export function forgetRecent(path: string): void {
+  const recent = get().recent.filter((p) => p.toLowerCase() !== path.toLowerCase())
+  set({ recent })
+  void window.cadencePlus.setSetting('recentFiles', recent)
+}
+
 export async function openPaths(paths: string[]): Promise<void> {
   for (const path of paths) {
     const existing = get().docs.find((d) => d.path?.toLowerCase() === path.toLowerCase() || d.sourcePath?.toLowerCase() === path.toLowerCase())
@@ -208,9 +216,11 @@ export async function openPaths(paths: string[]): Promise<void> {
         if (ext === PROJECT_EXTENSION) {
           const doc = await decodeProject(bytes)
           addDocument(doc, { path })
+          void storeThumbnail(doc, path).catch(() => undefined)
         } else {
           const { doc, note } = await importImage(bytes, ext, baseName(path))
           addDocument(doc, { sourcePath: path })
+          void storeThumbnail(doc, path).catch(() => undefined)
           if (note) toast(`${baseName(path)}: ${note}`, 'info')
         }
       })
@@ -243,6 +253,7 @@ export async function save(id = get().activeId, saveAs = false): Promise<boolean
     updateDocState(ds.id, (d) => ({ ...d, path, savedRevision: revision }))
     if (get().docs.find((d) => d.id === ds.id)?.history.revision === revision) onDocumentClean?.(ds.id)
     void rememberRecent(path)
+    void storeThumbnail(ds.history.present, path).catch(() => undefined)
     toast(`Saved ${baseName(path)} (${formatBytes(bytes.length)})`, 'success')
     return true
   } catch (e) {

@@ -6,7 +6,8 @@ import { storeStats } from '../engine/tiles'
 import { docColor } from '@core/model'
 import type { ExportPreset } from '@core/export-presets'
 import { command, currentColor, handleKeydown, keysFor, run } from '../state/commands'
-import { confirmQuit, displayName, formatBytes, newDocument, openDialog, openPaths, setZoom, titleFor } from '../state/doc-actions'
+import { confirmQuit, displayName, forgetRecent, formatBytes, newDocument, openDialog, openPaths, setZoom, titleFor } from '../state/doc-actions'
+import { ago, recentInfo, type RecentInfo } from '../state/thumbnails'
 import * as A from '../state/image-actions'
 import { activeDocState, get, isDirty, set, useEditor, type PanelId } from '../state/store'
 import { groupOf, toolCommand, TOOLS, type ToolDef } from '../state/tools'
@@ -544,6 +545,58 @@ function Toasts() {
 // Home
 // ---------------------------------------------------------------------------
 
+const FORMAT_NAMES: Record<string, string> = { cadenceimg: 'Cadence+', psd: 'PSD', tif: 'TIFF', tiff: 'TIFF', jpg: 'JPEG', jpeg: 'JPEG' }
+
+/** A recent file: live preview of its contents, name, folder and details. */
+function RecentCard({ path }: { path: string }) {
+  const [info, setInfo] = useState<RecentInfo | null>(null)
+  useEffect(() => {
+    let live = true
+    void recentInfo(path).then((i) => live && setInfo(i))
+    return () => {
+      live = false
+    }
+  }, [path])
+  const name = path.replace(/^.*[\\/]/, '')
+  const folder = path.replace(/[\\/][^\\/]*$/, '')
+  const ext = (/\.([^.]+)$/.exec(name)?.[1] ?? '').toLowerCase()
+  const missing = info !== null && !info.stat
+  const open = () => void openPaths([path])
+  const m = info?.meta
+  return (
+    <div
+      className={`recent-card${missing ? ' missing' : ''}`}
+      role="button"
+      tabIndex={0}
+      title={path}
+      onClick={open}
+      onKeyDown={(e) => e.key === 'Enter' && open()}
+      onContextMenu={(e) => {
+        e.preventDefault()
+        showContextMenu(e, [
+          { label: 'Open', action: open, disabled: missing },
+          { label: 'Show in Folder', action: () => window.cadencePlus.showInFolder(path), disabled: missing },
+          { sep: true },
+          { label: 'Remove from Recent', action: () => forgetRecent(path) }
+        ])
+      }}
+    >
+      <div className="preview">
+        {info?.url ? <img src={info.url} alt="" draggable={false} /> : <span className="placeholder">{missing ? 'File not found' : info ? (/\.cadenceimg$/i.test(path) ? <IconNewDoc size={22} /> : <IconImage size={22} />) : ''}</span>}
+        <span className="badge">{FORMAT_NAMES[ext] ?? ext.toUpperCase()}</span>
+      </div>
+      <div className="meta">
+        <div className="n">{name}</div>
+        <div className="p">{folder}</div>
+        <div className="d">
+          <span className="what">{missing ? 'Moved or deleted' : m ? `${m.width} × ${m.height} · ${m.mode}${m.layers > 1 ? ` · ${m.layers} layers` : ''}` : info ? '' : 'Loading preview…'}</span>
+          {info?.stat ? <span className="when">{ago(info.stat.mtime)}</span> : null}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function Home() {
   const recent = useEditor((s) => s.recent)
   const [drop, setDrop] = useState(false)
@@ -570,7 +623,7 @@ function Home() {
           <h1>
             <Wordmark />
           </h1>
-          <div className="sub">Image editor</div>
+          <div className="sub">Professional image editing</div>
           <div className="actions">
             <button className="btn primary" onClick={() => run('file.new')}>
               New…
@@ -583,7 +636,7 @@ function Home() {
             </button>
           </div>
           <p className="note" style={{ marginTop: 18, lineHeight: 1.6 }}>
-            Opens PNG, JPEG, WebP, AVIF, GIF, BMP and Cadence+ documents. Drop files here to open them.
+            Opens Cadence+ documents, Photoshop (PSD), TIFF, camera RAW, PNG, JPEG, WebP, AVIF, GIF and BMP. Drop files here to open them.
           </p>
         </div>
         <div>
@@ -611,15 +664,9 @@ function Home() {
             {recent.length === 0 ? (
               <div className="note">Files you open or save appear here.</div>
             ) : (
-              <div className="recent-list">
+              <div className="recent-grid">
                 {recent.map((p) => (
-                  <div key={p} className="recent-item" onClick={() => void openPaths([p])} role="button" tabIndex={0} onKeyDown={(e) => e.key === 'Enter' && void openPaths([p])}>
-                    {/\.cadenceimg$/i.test(p) ? <IconNewDoc /> : <IconImage />}
-                    <div className="t">
-                      <div>{p.replace(/^.*[\\/]/, '')}</div>
-                      <div className="p">{p}</div>
-                    </div>
-                  </div>
+                  <RecentCard key={p} path={p} />
                 ))}
               </div>
             )}

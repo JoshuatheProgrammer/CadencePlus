@@ -28,6 +28,10 @@ const api: CadencePlusApi = {
   discardRecovery: (id) => ipcRenderer.invoke('recovery:discard', id),
   listRecovery: () => ipcRenderer.invoke('recovery:list'),
 
+  statFile: (p) => ipcRenderer.invoke('fs:stat', p),
+  getThumbnail: (p) => ipcRenderer.invoke('thumbs:get', p),
+  putThumbnail: (p, png, meta) => ipcRenderer.invoke('thumbs:put', p, png, meta),
+
   getSettings: () => ipcRenderer.invoke('settings:get'),
   setSetting: (k, v) => ipcRenderer.invoke('settings:set', k, v),
   addRecent: (p) => ipcRenderer.invoke('settings:addRecent', p),

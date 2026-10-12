@@ -1,5 +1,6 @@
 import { existsSync, promises as fsp } from 'node:fs'
 import { join } from 'node:path'
+import { createHash } from 'node:crypto'
 import { app, BrowserWindow, clipboard, ClipboardItem, dialog, ipcMain, Menu, shell } from 'electron'
 import { IMAGE_EXTENSIONS, RAW_FILE_EXTENSIONS, type RecoveryMeta } from '@shared/ipc'
 import { discardRecovery, listRecovery, writeRecovery } from './recovery'
@@ -104,6 +105,31 @@ function registerIpc(): void {
   ipcMain.handle('dialog:folder', async (e, title: string) => {
     const r = await dialog.showOpenDialog(win(e), { title, properties: ['openDirectory', 'createDirectory'] })
     return r.canceled || !r.filePaths[0] ? null : r.filePaths[0]
+  })
+  ipcMain.handle('fs:stat', async (_e, path: string) => {
+    try {
+      const s = await fsp.stat(path)
+      return s.isFile() ? { size: s.size, mtime: s.mtimeMs } : null
+    } catch {
+      return null
+    }
+  })
+  // Home-screen previews: <userData>/Thumbnails/<sha1 of the lower-cased path>.png + .json
+  const thumbPath = (path: string) => join(app.getPath('userData'), 'Thumbnails', createHash('sha1').update(path.toLowerCase()).digest('hex'))
+  ipcMain.handle('thumbs:get', async (_e, path: string) => {
+    try {
+      const base = thumbPath(path)
+      const [png, meta] = await Promise.all([fsp.readFile(`${base}.png`), fsp.readFile(`${base}.json`, 'utf8')])
+      return { png: new Uint8Array(png), meta: JSON.parse(meta) }
+    } catch {
+      return null
+    }
+  })
+  ipcMain.handle('thumbs:put', async (_e, path: string, png: Uint8Array, meta: unknown) => {
+    const base = thumbPath(path)
+    await fsp.mkdir(join(base, '..'), { recursive: true })
+    await fsp.writeFile(`${base}.png`, png)
+    await fsp.writeFile(`${base}.json`, JSON.stringify(meta))
   })
   ipcMain.handle('fs:readFile', async (_e, path: string) => new Uint8Array(await fsp.readFile(path)))
   ipcMain.handle('fs:writeFile', (_e, path: string, data: Uint8Array, backup: boolean) => writeAtomic(path, data, backup))

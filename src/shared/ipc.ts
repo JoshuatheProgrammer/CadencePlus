@@ -47,6 +47,12 @@ export interface CadencePlusApi {
   discardRecovery(id: string): Promise<void>
   listRecovery(): Promise<RecoveryEntry[]>
 
+  /** Size and modification time (ms), or null when the file is gone. */
+  statFile(path: string): Promise<{ size: number; mtime: number } | null>
+  /** Cached home-screen preview of a file. */
+  getThumbnail(path: string): Promise<{ png: Uint8Array; meta: Record<string, unknown> & { mtime: number } } | null>
+  putThumbnail(path: string, png: Uint8Array, meta: Record<string, unknown>): Promise<void>
+
   getSettings(): Promise<Record<string, unknown>>
   setSetting(key: string, value: unknown): Promise<void>
   /** Moves `path` to the top of the recent-files list and returns the list. */
