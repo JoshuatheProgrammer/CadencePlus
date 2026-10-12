@@ -6,7 +6,7 @@
       "runtimeExecutable": "npm",
       "runtimeArgs": [
         "run",
-        "dev"
+        "plus:dev"
       ],
       "port": 3000
     }

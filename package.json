@@ -1,46 +1,18 @@
 {
-  "name": "cadence-plus",
-  "productName": "Cadence+",
-  "version": "0.1.0",
-  "description": "Cadence+ \u2014 a professional image editor, sibling of Cadence",
+  "name": "cadence",
+  "version": "0.0.0",
   "private": true,
-  "main": "out/main/index.js",
+  "description": "Cadence — a free, open-source creative suite: Cadence+ (images), Cadence Video and the Cadence hub",
+  "license": "MIT",
   "workspaces": [
+    "apps/*",
     "packages/*"
   ],
   "scripts": {
-    "dev": "electron-vite dev",
-    "build": "electron-vite build",
-    "start": "electron-vite preview",
-    "typecheck": "tsc --noEmit -p tsconfig.json",
-    "test": "vitest run",
-    "test:watch": "vitest",
-    "shot": "node scripts/screenshot.mjs",
-    "e2e": "node scripts/e2e.mjs",
-    "perf": "node scripts/perf.mjs"
-  },
-  "dependencies": {
-    "@cadence/core": "0.1.0",
-    "@cadence/ui": "0.1.0",
-    "ag-psd": "^31.0.3",
-    "dockview-react": "^8.4.1",
-    "immer": "^11.1.21",
-    "libraw-wasm": "^1.6.0",
-    "react": "^19.3.0",
-    "react-dom": "^19.3.0",
-    "utif2": "^4.1.0",
-    "zustand": "^5.0.15"
-  },
-  "devDependencies": {
-    "@types/node": "^26.6.5",
-    "@types/react": "^19.3.0",
-    "@types/react-dom": "^19.3.0",
-    "@vitejs/plugin-react": "^5.2.0",
-    "electron": "^44.7.0",
-    "electron-vite": "^5.0.0",
-    "playwright": "^1.64.0",
-    "typescript": "^7.0.2",
-    "vite": "^7.3.7",
-    "vitest": "^4.1.11"
+    "plus:dev": "npm run dev -w cadence-plus",
+    "plus:build": "npm run build -w cadence-plus",
+    "plus:e2e": "npm run e2e -w cadence-plus",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "npm test --workspaces --if-present"
   }
 }
